@@ -1,0 +1,17 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+export const config = {
+  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,
+  nodeEnv: process.env.NODE_ENV || 'development',
+  clientUrl: process.env.CLIENT_URL || 'http://localhost:3001',
+  supabase: {
+    url: process.env.SUPABASE_URL || '',
+    anonKey: process.env.SUPABASE_ANON_KEY || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  },
+  sis: {
+    apiUrl: process.env.SIS_API_URL || 'http://localhost:5000',
+    apiKey: process.env.SIS_API_KEY || 'frighton-lms-sis-shared-secret-key-change-in-prod',
+  },
+};
