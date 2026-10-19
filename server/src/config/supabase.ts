@@ -1,28 +1,27 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from './env.js';
 
-let supabaseClient: SupabaseClient | null = null;
 let supabaseAdminClient: SupabaseClient | null = null;
+const authOptions = { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false };
 
-export const getSupabase = (): SupabaseClient => {
-  if (!supabaseClient) {
-    supabaseClient = createClient(
-      config.supabase.url || 'https://placeholder.supabase.co',
-      config.supabase.anonKey || 'placeholder-anon-key'
-    );
+function requireConfig(key: string): void {
+  if (!config.supabase.url || !key || config.supabase.url.includes('your-project-id')) {
+    throw new Error('Supabase authentication is not configured.');
   }
-  return supabaseClient;
+}
+
+// Each login and refresh gets an isolated client so staff sessions cannot mix.
+export const createSupabaseAuthClient = (): SupabaseClient => {
+  requireConfig(config.supabase.anonKey);
+  return createClient(config.supabase.url, config.supabase.anonKey, { auth: authOptions });
 };
 
 export const getSupabaseAdmin = (): SupabaseClient => {
   if (!supabaseAdminClient) {
-    supabaseAdminClient = createClient(
-      config.supabase.url || 'https://placeholder.supabase.co',
-      config.supabase.serviceRoleKey || 'placeholder-service-key',
-      {
-        auth: { autoRefreshToken: false, persistSession: false },
-      }
-    );
+    requireConfig(config.supabase.serviceRoleKey);
+    supabaseAdminClient = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+      auth: authOptions,
+    });
   }
   return supabaseAdminClient;
 };
