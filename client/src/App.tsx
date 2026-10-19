@@ -1,190 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { ArrowRight, BookOpen, Clock3, Compass, Home, Menu, Search, X } from 'lucide-react';
+import { BookCover } from './components/BookCover';
+import { CatalogPage } from './pages/CatalogPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { MyLoansPage } from './pages/MyLoansPage';
+import { LoginPage } from './pages/LoginPage';
+import { books, type Book } from './data/books';
 import './App.css';
-import { Book, Library, ArrowRight, ShieldCheck, BookmarkCheck } from 'lucide-react';
-import { isSupabaseConfigured } from './config/supabase';
 
-export function App() {
-  const [activeTab, setActiveTab] = useState<'catalog' | 'eligibility' | 'overdue'>('catalog');
-  const [backendStatus, setBackendStatus] = useState<string>('Checking...');
-  const [books, setBooks] = useState<any[]>([]);
-  const [patronId, setPatronId] = useState('STU-2026-0001');
-  const [patronResult, setPatronResult] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then((res) => res.json())
-      .then((d) => setBackendStatus(d.status === 'ok' ? 'Connected (:5001)' : 'Offline'))
-      .catch(() => setBackendStatus('Offline'));
-
-    fetch('/api/v1/books')
-      .then((res) => res.json())
-      .then((data) => setBooks(data))
-      .catch(() => {});
-  }, []);
-
-  const handleVerifyPatron = async () => {
-    setChecking(true);
-    setPatronResult(null);
-    try {
-      const res = await fetch(`/api/v1/loans/verify-patron/${patronId}`);
-      const data = await res.json();
-      setPatronResult(JSON.stringify(data, null, 2));
-    } catch (err: any) {
-      setPatronResult(JSON.stringify({ error: err.message }, null, 2));
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  return (
-    <div className="app-container">
-      <header className="app-header">
-        <div className="brand-section">
-          <div className="brand-crest">
-            <Library size={28} color="#fff" />
-          </div>
-          <div>
-            <h1 className="brand-title">Frighton University LMS</h1>
-            <p className="brand-subtitle">Library Management System & Archive</p>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <div className="badge">
-            <span className={`badge-dot ${backendStatus.includes('Connected') ? 'online' : 'pending'}`}></span>
-            <span>LMS API: {backendStatus}</span>
-          </div>
-          <div className="badge">
-            <span className={`badge-dot ${isSupabaseConfigured ? 'online' : 'pending'}`}></span>
-            <span>Supabase: {isSupabaseConfigured ? 'Connected' : 'Credentials Needed'}</span>
-          </div>
-        </div>
-      </header>
-
-      <nav className="tabs-nav">
-        <button 
-          className={`tab-btn ${activeTab === 'catalog' ? 'active' : ''}`}
-          onClick={() => setActiveTab('catalog')}
-        >
-          <Book size={18} /> Library Catalog
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'eligibility' ? 'active' : ''}`}
-          onClick={() => setActiveTab('eligibility')}
-        >
-          <ShieldCheck size={18} /> SIS Patron Standing Verifier
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'overdue' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overdue')}
-        >
-          <BookmarkCheck size={18} /> Overdue Holds & Clearance
-        </button>
+type Page = 'home' | 'catalog' | 'loans';
+export default function App() {
+  const [page, setPage] = useState<Page>('home');
+  const [loginOpen, setLoginOpen] = useState(true);
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [mobileNav, setMobileNav] = useState(false);
+  const [notice, setNotice] = useState('');
+  const showBook = (book: Book | number) => setSelectedBook(typeof book === 'number' ? books.find((item) => item.id === book) ?? null : book);
+  const navigate = (next: Page) => { setPage(next); setMobileNav(false); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const borrow = () => { setNotice('Loan requests are not available yet. Please visit the library desk.'); setSelectedBook(null); window.setTimeout(() => setNotice(''), 4500); };
+  if (loginOpen) return <LoginPage onViewOverview={() => setLoginOpen(false)} />;
+  return <div className="app-shell">
+    <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
+      <button className="brand-lockup" onClick={() => navigate('home')} aria-label="Frighton University Library home"><span className="brand-mark"><span>F</span></span><span><strong>FRIGHTON</strong><small>UNIVERSITY LIBRARY</small></span></button>
+      <div className="nav-label">LIBRARY</div>
+      <nav className="side-nav" aria-label="Main navigation">
+        <button className={page === 'home' ? 'nav-active' : ''} onClick={() => navigate('home')}><Home size={18}/> Overview</button>
+        <button className={page === 'catalog' ? 'nav-active' : ''} onClick={() => navigate('catalog')}><Compass size={18}/> Discover books</button>
+        <button className={page === 'loans' ? 'nav-active' : ''} onClick={() => navigate('loans')}><BookOpen size={18}/> My loans <span className="nav-count">2</span></button>
       </nav>
-
-      {activeTab === 'catalog' && (
-        <section>
-          <div className="card">
-            <h2 className="card-title"><Book size={20} color="#10b981" /> University Library Collection</h2>
-            <p className="card-description">
-              Browse textbooks, manuscripts, and archive collections. Loans require active standing in Frighton SIS.
-            </p>
-
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Author</th>
-                  <th>Category</th>
-                  <th>ISBN</th>
-                  <th>Availability</th>
-                </tr>
-              </thead>
-              <tbody>
-                {books.map((b) => (
-                  <tr key={b.id}>
-                    <td><strong>{b.title}</strong></td>
-                    <td>{b.author}</td>
-                    <td>{b.category}</td>
-                    <td><code>{b.isbn}</code></td>
-                    <td>
-                      <span style={{ color: b.availableCopies > 0 ? '#10b981' : '#f43f5e', fontWeight: 600 }}>
-                        {b.availableCopies} / {b.totalCopies} Available
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'eligibility' && (
-        <section>
-          <div className="card">
-            <h2 className="card-title"><ShieldCheck size={20} color="#06b6d4" /> Check Student Borrowing Eligibility in SIS</h2>
-            <p className="card-description">
-              This calls the LMS backend (port 5001), which queries the Frighton SIS API (port 5000) using the shared secret key to check enrollment and academic holds.
-            </p>
-
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <input 
-                type="text" 
-                value={patronId} 
-                onChange={(e) => setPatronId(e.target.value)}
-                placeholder="Enter Student ID (e.g. STU-2026-0001)"
-                style={{
-                  background: '#05070a',
-                  border: '1px solid var(--border-color)',
-                  color: '#fff',
-                  padding: '0.75rem 1rem',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.9rem',
-                  flex: 1
-                }}
-              />
-              <button 
-                className="action-btn"
-                onClick={handleVerifyPatron}
-                disabled={checking}
-              >
-                {checking ? 'Querying SIS...' : 'Verify Patron Standing'} <ArrowRight size={16} />
-              </button>
-            </div>
-
-            {patronResult && (
-              <div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                  Response received from SIS via LMS backend:
-                </p>
-                <pre className="code-block" style={{ maxHeight: '250px' }}>
-                  {patronResult}
-                </pre>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'overdue' && (
-        <section>
-          <div className="card">
-            <h2 className="card-title"><BookmarkCheck size={20} color="#f59e0b" /> Academic Holds Bridge</h2>
-            <p className="card-description">
-              When materials are overdue or lost, the Library Management System posts a hold directly into Frighton SIS, blocking course registration or graduation until cleared.
-            </p>
-            <div className="code-block">
-              POST /api/v1/loans/report-overdue<br />
-              Target: SIS API /api/v1/integration/holds<br />
-              Header: X-LMS-API-KEY
-            </div>
-          </div>
-        </section>
-      )}
-    </div>
-  );
+    </aside>
+    {mobileNav && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)}/>}
+    <main className="main-area">
+      <header className="topbar"><div className="topbar-left"><button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="Toggle navigation">{mobileNav ? <X size={20}/> : <Menu size={20}/>}</button><span className="portal-label"><span className="portal-monogram">F</span> FRIGHTON UNIVERSITY LIBRARY</span></div><div className="topbar-right"><button className="top-search" onClick={() => navigate('catalog')}><Search size={16}/><span>Search the collection</span></button><span className="topbar-date"><Clock3 size={14}/> Open today until 9 PM</span><button className="sign-out-button" onClick={() => setLoginOpen(true)}>Sign in</button></div></header>
+      <div className="page-content" key={page}>{page === 'home' ? <DashboardPage onCatalog={() => navigate('catalog')} onBook={showBook}/> : page === 'catalog' ? <CatalogPage onBook={showBook}/> : <MyLoansPage onBook={showBook}/>}</div>
+    </main>
+    {notice && <div className="toast" role="status">{notice}</div>}
+    {selectedBook && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedBook(null); }}><section className="book-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><button className="dialog-close" onClick={() => setSelectedBook(null)} aria-label="Close book details"><X size={19}/></button><div className="dialog-cover"><BookCover book={selectedBook}/></div><div className="dialog-content"><div className="eyebrow">{selectedBook.category} · {selectedBook.year}</div><h2 id="dialog-title">{selectedBook.title}</h2><p className="dialog-author">by {selectedBook.author}</p><div className={`detail-availability ${selectedBook.copies ? 'is-available' : 'is-unavailable'}`}><span className="availability-pill-dot"/>{selectedBook.copies ? `${selectedBook.copies} copies available` : 'Currently on loan'}<span>·</span>{selectedBook.shelf}</div><p className="dialog-description">{selectedBook.description}</p><div className="dialog-actions"><button className="button button-primary" disabled={!selectedBook.copies} onClick={borrow}>{selectedBook.copies ? 'Request to borrow' : 'Join the waitlist'} <ArrowRight size={16}/></button></div></div></section></div>}
+  </div>;
 }
-
-export default App;
