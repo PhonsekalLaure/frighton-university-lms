@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
-dotenv.config();
+import { fileURLToPath } from 'node:url';
+
+dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 export const config = {
   port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5001,

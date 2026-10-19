@@ -4,11 +4,11 @@ import { EligibilityCard } from '../components/EligibilityCard';
 import { books } from '../data/books';
 import { student } from '../data/student';
 
-export function DashboardPage({ onCatalog, onBook }: { onCatalog: () => void; onBook: (id: number) => void }) {
+export function DashboardPage({ librarianName, onCatalog, onBook }: { librarianName: string; onCatalog: () => void; onBook: (id: number) => void }) {
   const loanBooks = [books[0], books[3]];
   return <>
     <div className="welcome-row">
-      <div><div className="eyebrow">FRIGHTON UNIVERSITY LIBRARY</div><h1>Welcome to the library</h1></div>
+      <div><div className="eyebrow">FRIGHTON UNIVERSITY LIBRARY</div><h1>Welcome, {librarianName}</h1></div>
       <button className="button button-primary" onClick={onCatalog}>Explore the catalog <ArrowRight size={16} /></button>
     </div>
     <div className="dashboard-grid">
