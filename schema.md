@@ -1,7 +1,5 @@
 # Frighton University LMS - Database Schema
 
-> **File Location:** Mirrored at [`supabase/schema.md`](file:///c:/Users/Veluz/Documents/LMS/frighton-university-lms/supabase/schema.md).
-
 A clean, direct, and production-ready Supabase PostgreSQL schema with **Indexing** and **Row Level Security (RLS)**.
 
 ---
