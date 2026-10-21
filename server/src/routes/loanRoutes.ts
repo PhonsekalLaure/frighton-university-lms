@@ -40,20 +40,19 @@ loanRouter.post('/borrow', async (req: Request, res: Response, next: NextFunctio
       return;
     }
 
-    // Step 2: Issue loan record
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 14); // 14-day checkout
-
-    res.status(201).json({
-      message: 'Book loan approved and registered',
-      loan: {
-        frightonId,
-        bookId,
-        borrowDate: new Date().toISOString(),
-        dueDate: dueDate.toISOString(),
-        status: 'active',
-      },
+    // Step 2: The database locks the stock row and gives the first active
+    // reservation priority before creating the checkout.
+    const { data: loan, error } = await getSupabaseAdmin().rpc('borrow_book', {
+      p_student_number: patronStatus.frightonId,
+      p_book_id: bookId,
+      p_issued_by: res.locals.librarian.id,
     });
+    if (error) {
+      const status = error.code === '23505' || /reserved for another|maximum of/i.test(error.message) ? 409 : 400;
+      res.status(status).json({ error: error.message });
+      return;
+    }
+    res.status(201).json({ message: 'Book loan approved and registered', loan });
   } catch (err: any) {
     next(err);
   }
