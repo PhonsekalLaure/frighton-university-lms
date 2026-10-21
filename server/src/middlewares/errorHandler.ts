@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthError } from '../services/authService.js';
 
 export const errorHandler = (
-  err: Error & { status?: number },
+  err: Error & { status?: number; code?: string },
   _req: Request,
   res: Response,
   _next: NextFunction
@@ -19,6 +19,10 @@ export const errorHandler = (
     res.status(400).json({ error: 'Request body must contain valid JSON.' });
     return;
   }
-  console.error('Unhandled LMS server error:', err.name);
+  console.error('Unhandled LMS server error:', {
+    name: err.name || 'Unknown error',
+    message: err.message || String(err),
+    code: err.code,
+  });
   res.status(500).json({ error: 'An unexpected server error occurred. Please try again.' });
 };
