@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { ArrowRight, BookOpen, Clock3, Compass, Home, Menu, Search, X } from 'lucide-react';
+import { ArrowRight, BookMarked, BookOpen, Clock3, Compass, Home, Menu, Search, X } from 'lucide-react';
 import { BookCover } from './components/BookCover';
 import { CatalogPage } from './pages/CatalogPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MyLoansPage } from './pages/MyLoansPage';
 import { LoginPage } from './pages/LoginPage';
+import { ReservationsPage } from './pages/ReservationsPage';
 import { books, type Book } from './data/books';
 import { useAuth } from './hooks/useAuth';
 import './App.css';
 
-type Page = 'home' | 'catalog' | 'loans';
+type Page = 'home' | 'catalog' | 'loans' | 'reservations';
 export default function App() {
   const [page, setPage] = useState<Page>('home');
   const { librarian, checking, sessionError, login, logout } = useAuth();
@@ -50,12 +51,13 @@ export default function App() {
         <button className={page === 'home' ? 'nav-active' : ''} onClick={() => navigate('home')}><Home size={18}/> Overview</button>
         <button className={page === 'catalog' ? 'nav-active' : ''} onClick={() => navigate('catalog')}><Compass size={18}/> Discover books</button>
         <button className={page === 'loans' ? 'nav-active' : ''} onClick={() => navigate('loans')}><BookOpen size={18}/> My loans <span className="nav-count">2</span></button>
+        <button className={page === 'reservations' ? 'nav-active' : ''} onClick={() => navigate('reservations')}><BookMarked size={18}/> Reservations</button>
       </nav>
     </aside>
     {mobileNav && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)}/>}
     <main className="main-area">
       <header className="topbar"><div className="topbar-left"><button className="mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="Toggle navigation">{mobileNav ? <X size={20}/> : <Menu size={20}/>}</button><span className="portal-label"><span className="portal-monogram">F</span> FRIGHTON UNIVERSITY LIBRARY</span></div><div className="topbar-right"><button className="top-search" onClick={() => navigate('catalog')}><Search size={16}/><span>Search the collection</span></button><span className="topbar-date"><Clock3 size={14}/> Open today until 9 PM</span><button className="sign-out-button" onClick={() => void handleSignOut()} disabled={signingOut}>{signingOut ? 'Signing out...' : 'Sign out'}</button></div></header>
-      <div className="page-content" key={page}>{page === 'home' ? <DashboardPage librarianName={librarian.fullName} onCatalog={() => navigate('catalog')} onBook={showBook}/> : page === 'catalog' ? <CatalogPage onBook={showBook}/> : <MyLoansPage onBook={showBook}/>}</div>
+      <div className="page-content" key={page}>{page === 'home' ? <DashboardPage librarianName={librarian.fullName} onCatalog={() => navigate('catalog')} onBook={showBook}/> : page === 'catalog' ? <CatalogPage onBook={showBook}/> : page === 'loans' ? <MyLoansPage onBook={showBook}/> : <ReservationsPage />}</div>
     </main>
     {notice && <div className="toast" role="status">{notice}</div>}
     {selectedBook && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedBook(null); }}><section className="book-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><button className="dialog-close" onClick={() => setSelectedBook(null)} aria-label="Close book details"><X size={19}/></button><div className="dialog-cover"><BookCover book={selectedBook}/></div><div className="dialog-content"><div className="eyebrow">{selectedBook.category} · {selectedBook.year}</div><h2 id="dialog-title">{selectedBook.title}</h2><p className="dialog-author">by {selectedBook.author}</p><div className={`detail-availability ${selectedBook.copies ? 'is-available' : 'is-unavailable'}`}><span className="availability-pill-dot"/>{selectedBook.copies ? `${selectedBook.copies} copies available` : 'Currently on loan'}<span>·</span>{selectedBook.shelf}</div><p className="dialog-description">{selectedBook.description}</p><div className="dialog-actions"><button className="button button-primary" disabled={!selectedBook.copies} onClick={borrow}>{selectedBook.copies ? 'Request to borrow' : 'Join the waitlist'} <ArrowRight size={16}/></button></div></div></section></div>}
