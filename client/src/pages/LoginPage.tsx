@@ -44,8 +44,7 @@ export function LoginPage({ onSignIn, sessionError = '' }: LoginPageProps) {
         <label className="remember-row"><input type="checkbox" name="remember" disabled={pending}/> Keep me signed in</label>
         {(error || sessionError) && <p id="login-error" className="login-notice" role="alert">{error || sessionError}</p>}
         <button className="button login-submit" type="submit" disabled={pending}>{pending ? 'Signing in...' : 'Sign in'} <ArrowRight size={16}/></button>
-        <p className="login-access-note">Access is limited to active librarians. Contact the Library Administrator for an account.</p>
-      </form>
+        </form>
     </section>
   </main>;
 }
