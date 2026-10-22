@@ -1,6 +1,6 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
-  ArrowLeftRight, ArrowRight, CheckCircle2, ChevronDown, Clock3, FileText,
+  ArrowLeftRight, ArrowRight, BookmarkCheck, CheckCircle2, ChevronDown, Clock3, FileText,
   LayoutDashboard, Library, LogOut, Menu, Search, ShieldCheck, UserCog, Users, X,
 } from 'lucide-react';
 import type { BookRecord, Loan, Page, Reservation, Staff, StaffRole } from './types/library';
@@ -21,6 +21,8 @@ import { Field, FormActions, Modal } from './components/staff/StaffUI';
 import './App.css';
 import './staff.css';
 
+type ConfirmationRequest = { title: string; message: string; confirmLabel: string; onConfirm: () => void; danger?: boolean };
+
 const pageLabels: Record<Page, string> = {
   dashboard: 'Dashboard',
   books: 'Book catalog',
@@ -29,10 +31,23 @@ const pageLabels: Record<Page, string> = {
   reservations: 'Reservations',
   librarians: 'Librarian management',
 };
+const pagePaths: Record<Page, string> = {
+  dashboard: '/dashboard',
+  books: '/books',
+  circulation: '/circulation',
+  borrowed: '/borrowers',
+  reservations: '/reservations',
+  librarians: '/librarians',
+};
+const pageFromPath = (pathname: string): Page | undefined => {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+  if (normalizedPath === '/') return 'dashboard';
+  return (Object.keys(pagePaths) as Page[]).find((candidate) => pagePaths[candidate] === normalizedPath);
+};
 export default function App() {
   const [signedIn, setSignedIn] = useState(false);
   const [role, setRole] = useState<StaffRole>('Librarian');
-  const [page, setPage] = useState<Page>('dashboard');
+  const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname) ?? 'dashboard');
   const [books, setBooks] = useState<BookRecord[]>(initialBooks);
   const [loans, setLoans] = useState<Loan[]>(initialLoans);
   const [reservations, setReservations] = useState<Reservation[]>(() => initialReservations.map<Reservation>((item) => item.status === 'Active' && item.expires < todayISO() ? { ...item, status: 'Expired' } : item));
@@ -43,6 +58,7 @@ export default function App() {
   const [editingBook, setEditingBook] = useState<BookRecord | null>(null);
   const [notice, setNotice] = useState('');
   const [fineReceipt, setFineReceipt] = useState<{ loan: Loan; amount: number; receipt: string } | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [circulationTab, setCirculationTab] = useState<'borrow' | 'return'>('borrow');
   const [borrowId, setBorrowId] = useState('');
   const [borrowBookId, setBorrowBookId] = useState('');
@@ -57,11 +73,27 @@ export default function App() {
   const [reservationForm, setReservationForm] = useState({ studentId: '', bookId: '' });
   const [staffForm, setStaffForm] = useState({ name: '', email: '' });
 
+  useEffect(() => {
+    const restoreLibraryPage = () => {
+      const previousPage = pageFromPath(window.location.pathname);
+      if (previousPage) {
+        setPage(previousPage as Page);
+        setMobileNav(false);
+        setNotice('');
+      }
+    };
+    window.addEventListener('popstate', restoreLibraryPage);
+    return () => window.removeEventListener('popstate', restoreLibraryPage);
+  }, []);
+
   const activeLoans = useMemo(() => loans.filter((loan) => !loan.returned), [loans]);
   const overdueLoans = activeLoans.filter((loan) => daysLate(loan.due) > 0);
   const activeReservations = reservations.filter((reservation) => reservation.status === 'Active');
   const bookById = (id: number) => books.find((book) => book.id === id);
-  const go = (next: Page) => { setPage(next); setMobileNav(false); setNotice(''); };
+  const go = (next: Page) => {
+    if (next !== page) window.history.pushState({ libraryPage: next }, '', pagePaths[next]);
+    setPage(next); setMobileNav(false); setNotice('');
+  };
   const flash = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(''), 3600); };
   const studentFor = (id: string) => students[id.trim().toUpperCase()];
 
@@ -131,7 +163,7 @@ export default function App() {
     setStaffForm({ name: '', email: '' }); setModal(null); flash('Librarian added to the demo directory.');
   };
 
-  if (!signedIn) return <LoginPage onSignIn={async (email) => { setRole(email.toLowerCase().includes('admin') ? 'Admin' : 'Librarian'); setSignedIn(true); }}/>
+  if (!signedIn) return <LoginPage onSignIn={async (email) => { setRole(email.toLowerCase().includes('admin') ? 'Admin' : 'Librarian'); window.history.replaceState({ libraryPage: page }, '', pagePaths[page]); setSignedIn(true); }}/>
 
   const navItems: { id: Page; label: string; icon: typeof LayoutDashboard; count?: number; admin?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -169,11 +201,11 @@ export default function App() {
       </header>
       <div className="staff-content" key={page}>
         {page === 'dashboard' && <DashboardPage books={books} activeLoans={activeLoans} overdueLoans={overdueLoans} reservations={activeReservations} bookById={bookById} onNavigate={go} onCirculation={(tab) => { setCirculationTab(tab); go('circulation'); }} />}
-        {page === 'books' && <BooksPage books={books} query={catalogQuery} setQuery={setCatalogQuery} filter={bookStatusFilter} setFilter={setBookStatusFilter} onAdd={() => startBookForm()} onEdit={startBookForm} onArchive={(id) => { setBooks((items) => items.map((book) => book.id === id ? { ...book, active: false } : book)); flash('Book archived. Its circulation history is retained.'); }} onReserve={(bookId) => { setReservationForm({ studentId: '', bookId: String(bookId) }); setModal('reservation'); }} />}
+        {page === 'books' && <BooksPage books={books} query={catalogQuery} setQuery={setCatalogQuery} filter={bookStatusFilter} setFilter={setBookStatusFilter} onAdd={() => startBookForm()} onEdit={startBookForm} onArchive={(id) => { const book = bookById(id); if (!book) return; setConfirmation({ title: 'Archive this book?', message: `“${book.title}” will be hidden from the active catalog. Its circulation history will be retained.`, confirmLabel: 'Archive book', danger: true, onConfirm: () => { setBooks((items) => items.map((item) => item.id === id ? { ...item, active: false } : item)); flash('Book archived. Its circulation history is retained.'); } }); }} onReserve={(bookId) => { setReservationForm({ studentId: '', bookId: String(bookId) }); setModal('reservation'); }} />}
         {page === 'circulation' && <CirculationPage tab={circulationTab} setTab={setCirculationTab} books={books} activeLoans={activeLoans} loans={loans} borrowId={borrowId} setBorrowId={setBorrowId} borrowBookId={borrowBookId} setBorrowBookId={setBorrowBookId} returnLoanId={returnLoanId} setReturnLoanId={setReturnLoanId} studentFor={studentFor} bookById={bookById} onBorrow={processBorrow} onReturn={processReturn} onReserve={() => { setReservationForm({ studentId: borrowId, bookId: borrowBookId }); setModal('reservation'); }} />}
         {page === 'borrowed' && <BorrowersPage loans={loans} books={books} query={loanQuery} setQuery={setLoanQuery} filter={loanFilter} setFilter={setLoanFilter} bookById={bookById} onReturn={(id) => { setReturnLoanId(id); setCirculationTab('return'); go('circulation'); }} />}
-        {page === 'reservations' && <ReservationsPage reservations={reservations} query={reservationQuery} setQuery={setReservationQuery} filter={reservationFilter} setFilter={setReservationFilter} bookById={bookById} onNew={() => { setReservationForm({ studentId: '', bookId: '' }); setModal('reservation'); }} onCancel={(id) => { setReservations((items) => items.map((item) => item.id === id ? { ...item, status: 'Cancelled' } : item)); flash('Reservation cancelled.'); }} onBorrow={(reservation) => { setBorrowId(reservation.studentId); setBorrowBookId(String(reservation.bookId)); setCirculationTab('borrow'); go('circulation'); }} />}
-        {page === 'librarians' && <LibrariansPage staff={staff} onAdd={() => setModal('librarian')} onToggle={(email) => setStaff((items) => items.map((person) => person.email === email ? { ...person, active: !person.active } : person))} />}
+        {page === 'reservations' && <ReservationsPage reservations={reservations} query={reservationQuery} setQuery={setReservationQuery} filter={reservationFilter} setFilter={setReservationFilter} bookById={bookById} onNew={() => { setReservationForm({ studentId: '', bookId: '' }); setModal('reservation'); }} onCancel={(id) => { const reservation = reservations.find((item) => item.id === id); if (!reservation) return; setConfirmation({ title: 'Cancel this reservation?', message: `Cancel ${reservation.student}’s hold for “${bookById(reservation.bookId)?.title ?? 'this title'}”?`, confirmLabel: 'Cancel reservation', danger: true, onConfirm: () => { setReservations((items) => items.map((item) => item.id === id ? { ...item, status: 'Cancelled' } : item)); flash('Reservation cancelled.'); } }); }} onBorrow={(reservation) => { setBorrowId(reservation.studentId); setBorrowBookId(String(reservation.bookId)); setCirculationTab('borrow'); go('circulation'); }} />}
+        {page === 'librarians' && <LibrariansPage staff={staff} onAdd={() => setModal('librarian')} onToggle={(email) => { const librarian = staff.find((person) => person.email === email); if (!librarian) return; if (!librarian.active) { setStaff((items) => items.map((person) => person.email === email ? { ...person, active: true } : person)); return; } setConfirmation({ title: 'Deactivate this librarian?', message: `${librarian.name} will lose access to the library staff console.`, confirmLabel: 'Deactivate account', danger: true, onConfirm: () => setStaff((items) => items.map((person) => person.email === email ? { ...person, active: false } : person)) }); }} />}
       </div>
       <footer className="staff-footer"><span>FRIGHTON UNIVERSITY LIBRARY</span><span>Staff circulation console <i> - </i> Demo data</span></footer>
     </main>
@@ -181,6 +213,7 @@ export default function App() {
     {modal === 'book' && <Modal title={editingBook ? 'Edit book record' : 'Add a book'} subtitle="Maintain the collection catalog." onClose={() => setModal(null)}><form className="staff-form" onSubmit={saveBook}><div className="form-grid"><Field label="Book title"><input required value={bookForm.title} onChange={(event) => setBookForm({ ...bookForm, title: event.target.value })} placeholder="Enter title"/></Field><Field label="Author"><input required value={bookForm.author} onChange={(event) => setBookForm({ ...bookForm, author: event.target.value })} placeholder="Author name"/></Field><Field label="Category"><input value={bookForm.category} onChange={(event) => setBookForm({ ...bookForm, category: event.target.value })} placeholder="e.g. History"/></Field><Field label="Publication year"><input type="number" min="0" value={bookForm.year} onChange={(event) => setBookForm({ ...bookForm, year: event.target.value })} placeholder="2026"/></Field><Field label="Total copies"><input type="number" min="0" required value={bookForm.total} onChange={(event) => setBookForm({ ...bookForm, total: event.target.value })}/></Field><Field label="Shelf location"><input value={bookForm.shelf} onChange={(event) => setBookForm({ ...bookForm, shelf: event.target.value })} placeholder="Humanities  -  823.9"/></Field></div><FormActions onCancel={() => setModal(null)} submit={editingBook ? 'Save changes' : 'Add to catalog'}/></form></Modal>}
     {modal === 'reservation' && <Modal title="New reservation" subtitle="Hold a title for a student for three days." onClose={() => setModal(null)}><form className="staff-form" onSubmit={saveReservation}><Field label="Student ID"><input required value={reservationForm.studentId} onChange={(event) => setReservationForm({ ...reservationForm, studentId: event.target.value.toUpperCase() })} placeholder="STU-2026-0001"/><small className="field-hint">Demo IDs: STU-2026-0001 through 0004</small></Field><Field label="Book"><select required value={reservationForm.bookId} onChange={(event) => setReservationForm({ ...reservationForm, bookId: event.target.value })}><option value="">Choose a title</option>{books.filter((book) => book.active).map((book) => <option value={book.id} key={book.id}>{book.title} {book.available ? ` -  ${book.available} available` : ' -  Out of stock'}</option>)}</select></Field><FormActions onCancel={() => setModal(null)} submit="Create reservation"/></form></Modal>}
     {modal === 'librarian' && <Modal title="Add librarian" subtitle="Create a staff directory entry for this demo." onClose={() => setModal(null)}><form className="staff-form" onSubmit={saveStaff}><Field label="Full name"><input required value={staffForm.name} onChange={(event) => setStaffForm({ ...staffForm, name: event.target.value })} placeholder="Full name"/></Field><Field label="University email"><input required type="email" value={staffForm.email} onChange={(event) => setStaffForm({ ...staffForm, email: event.target.value })} placeholder="name@frighton.edu"/></Field><div className="demo-callout"><ShieldCheck size={17}/> Frontend demo only. Account creation and password setup require a secured backend.</div><FormActions onCancel={() => setModal(null)} submit="Add librarian"/></form></Modal>}
+    {confirmation && <Modal title={confirmation.title} subtitle={confirmation.message} onClose={() => setConfirmation(null)}><div className="form-actions confirmation-actions"><button type="button" className="staff-outline" onClick={() => setConfirmation(null)}>Go back</button><button type="button" className={confirmation.danger ? 'staff-primary staff-danger' : 'staff-primary'} onClick={() => { const pending = confirmation; setConfirmation(null); pending.onConfirm(); }}>{confirmation.confirmLabel}</button></div></Modal>}
     {fineReceipt && <Modal title="Fine payment receipt" subtitle="Frighton University Library  -  Circulation desk" onClose={() => setFineReceipt(null)}><div className="receipt-card"><div className="receipt-brand"><span className="school-seal staff-brand-seal receipt-seal" aria-label="Frighton University seal"><span className="seal-monogram">F</span><i/><small>1912</small></span><span><strong>FRIGHTON UNIVERSITY</strong><small>LIBRARY SERVICES</small></span></div><div className="receipt-number-block"><span>RECEIPT NUMBER</span><strong>{fineReceipt.receipt}</strong></div><div className="receipt-fields"><span>Student<strong>{fineReceipt.loan.student}</strong></span><span>Student ID<strong>{fineReceipt.loan.studentId}</strong></span><span>Returned book<strong>{bookById(fineReceipt.loan.bookId)?.title}</strong></span><span>Payment date<strong>{formatDate(todayISO())}</strong></span></div><div className="receipt-total"><span>Fine collected</span><strong>{money(fineReceipt.amount)}</strong></div><p>Thank you. Keep this receipt for your records.</p></div><div className="form-actions"><button className="staff-outline" onClick={() => setFineReceipt(null)}>Close</button><button className="staff-primary" onClick={() => window.print()}><FileText size={15}/> Print receipt</button></div></Modal>}
   </div>;
 }
