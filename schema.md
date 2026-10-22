@@ -12,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
--- 1. USERS TABLE
+-- USERS (auth identity for students and staff)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.users (
     users_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     last_name   TEXT NOT NULL,
     email       TEXT NOT NULL UNIQUE,
     password    TEXT NOT NULL,
-    role        TEXT NOT NULL DEFAULT 'Students' 
+    role        TEXT NOT NULL DEFAULT 'Students'
                 CHECK (role IN ('Students', 'Librarian', 'Admin')),
     is_active   BOOLEAN NOT NULL DEFAULT true,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -29,7 +29,26 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 
 -- ============================================================
--- 2. BOOKS TABLE
+-- PROFILES (SIS student record; student_number lives here only)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id              UUID PRIMARY KEY REFERENCES public.users(users_id),
+    student_number  VARCHAR UNIQUE,
+    first_name      VARCHAR NOT NULL,
+    last_name       VARCHAR NOT NULL,
+    email           VARCHAR NOT NULL UNIQUE,
+    role            public.sis_user_role NOT NULL DEFAULT 'student',
+    academic_status public.academic_status NOT NULL DEFAULT 'active',
+    department      VARCHAR,
+    program         VARCHAR,
+    year_level      SMALLINT CHECK (year_level >= 1 AND year_level <= 4),
+    avatar_url      TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- ============================================================
+-- BOOKS
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.books (
     books_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,19 +64,19 @@ CREATE TABLE IF NOT EXISTS public.books (
 );
 
 -- ============================================================
--- 3. BORROW_RECORDS TABLE
+-- BORROW_RECORDS
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.borrow_records (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id         UUID NOT NULL REFERENCES public.users(users_id) ON DELETE CASCADE,
-    book_copy_id       UUID, -- optional copy identifier or references books(books_id)
+    student_id         UUID NOT NULL REFERENCES public.users(users_id) ON DELETE RESTRICT,
+    book_copy_id       UUID,
     book_id            UUID REFERENCES public.books(books_id) ON DELETE CASCADE,
     issued_by          UUID REFERENCES public.users(users_id),
     borrow_date        TIMESTAMPTZ NOT NULL DEFAULT now(),
     due_date           DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'Asia/Manila')::date + 14),
     daily_penalty_rate NUMERIC(10, 2) NOT NULL DEFAULT 5.00,
 
-    -- Filled in during book return:
+    -- Filled in on return:
     return_date        TIMESTAMPTZ,
     returned_to        UUID REFERENCES public.users(users_id),
     overdue_days       INT NOT NULL DEFAULT 0,
@@ -69,17 +88,118 @@ CREATE TABLE IF NOT EXISTS public.borrow_records (
 );
 
 -- ============================================================
--- 4. RESERVATIONS TABLE
+-- RESERVATIONS
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.reservations (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id  UUID NOT NULL REFERENCES public.users(users_id) ON DELETE CASCADE,
-    book_id     UUID NOT NULL REFERENCES public.books(books_id) ON DELETE CASCADE,
-    status      TEXT NOT NULL DEFAULT 'active'
-                CHECK (status IN ('active', 'fulfilled', 'cancelled', 'expired')),
-    reserved_by UUID NOT NULL REFERENCES public.users(users_id), -- librarian who took it
-    reserved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '3 days')
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id   UUID NOT NULL REFERENCES public.users(users_id) ON DELETE RESTRICT,
+    book_id      UUID NOT NULL REFERENCES public.books(books_id) ON DELETE CASCADE,
+    status       TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active', 'fulfilled', 'cancelled', 'expired')),
+    reserved_by  UUID NOT NULL REFERENCES public.users(users_id), -- librarian who took it
+    reserved_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at   TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '3 days'),
+    fulfilled_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ
+);
+
+-- ============================================================
+-- SIS: ACADEMIC TERMS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.academic_terms (
+    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code       VARCHAR NOT NULL UNIQUE,
+    name       VARCHAR NOT NULL,
+    start_date DATE NOT NULL,
+    end_date   DATE NOT NULL,
+    is_active  BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- ============================================================
+-- SIS: COURSES
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.courses (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    course_code VARCHAR NOT NULL UNIQUE,
+    title       VARCHAR NOT NULL,
+    description TEXT,
+    credits     SMALLINT NOT NULL CHECK (credits > 0),
+    department  VARCHAR NOT NULL,
+    is_active   BOOLEAN NOT NULL DEFAULT true,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- ============================================================
+-- SIS: COURSE SECTIONS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.course_sections (
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    course_id        UUID NOT NULL REFERENCES public.courses(id),
+    term_id          UUID NOT NULL REFERENCES public.academic_terms(id),
+    section_number   VARCHAR NOT NULL DEFAULT '01',
+    instructor_name  VARCHAR,
+    instructor_email VARCHAR,
+    schedule         VARCHAR,
+    room             VARCHAR,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- ============================================================
+-- SIS: ACADEMIC RECORDS (enrollment + grades)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.academic_records (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    student_id  UUID NOT NULL REFERENCES public.profiles(id),
+    section_id  UUID NOT NULL REFERENCES public.course_sections(id),
+    grade       VARCHAR CHECK (grade IS NULL OR grade IN
+                    ('A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D', 'F', 'IP', 'W')),
+    is_current  BOOLEAN NOT NULL DEFAULT false,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- ============================================================
+-- SIS: STUDENT HOLDS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.student_holds (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    student_id        UUID NOT NULL REFERENCES public.profiles(id),
+    hold_type         public.hold_type NOT NULL,
+    reason            TEXT NOT NULL,
+    placed_by_system  VARCHAR NOT NULL DEFAULT 'Frighton SIS',
+    placed_at         TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    resolved_at       TIMESTAMPTZ
+);
+
+-- ============================================================
+-- SIS: STUDENT ACCOUNTS (per-term billing)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.student_accounts (
+    id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    student_id     UUID NOT NULL REFERENCES public.profiles(id),
+    term_id        UUID NOT NULL REFERENCES public.academic_terms(id),
+    base_tuition   NUMERIC NOT NULL DEFAULT 0 CHECK (base_tuition >= 0),
+    mandatory_fees NUMERIC NOT NULL DEFAULT 0 CHECK (mandatory_fees >= 0),
+    scholarships   NUMERIC NOT NULL DEFAULT 0 CHECK (scholarships >= 0),
+    status         public.account_status NOT NULL DEFAULT 'open',
+    due_date       DATE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
+-- ============================================================
+-- SIS: STUDENT PAYMENTS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.student_payments (
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id       UUID NOT NULL REFERENCES public.student_accounts(id),
+    amount           NUMERIC NOT NULL CHECK (amount > 0),
+    reference_number VARCHAR NOT NULL UNIQUE,
+    receipt_status   VARCHAR NOT NULL DEFAULT 'completed'
+                     CHECK (receipt_status IN ('pending', 'completed', 'void')),
+    paid_at          TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 ```
 
