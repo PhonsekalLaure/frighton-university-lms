@@ -8,7 +8,7 @@ export interface SISStudentStatus {
   academicStatus: string;
   department: string;
   canBorrow: boolean;
-  activeHolds: any[];
+  activeHolds: unknown[];
 }
 
 export const sisService = {
@@ -16,8 +16,10 @@ export const sisService = {
    * Queries the Frighton University SIS to verify if student is active & eligible to borrow
    */
   async checkStudentStatus(frightonId: string): Promise<SISStudentStatus> {
-    const url = `${config.sis.apiUrl}/api/v1/integration/students/${frightonId}/status`;
+    if (!config.sis.apiKey) throw new Error('SIS_API_KEY is not configured.');
+    const url = `${config.sis.apiUrl}/api/v1/integration/students/${encodeURIComponent(frightonId)}/status`;
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
       headers: {
         'x-lms-api-key': config.sis.apiKey,
         'Content-Type': 'application/json',
