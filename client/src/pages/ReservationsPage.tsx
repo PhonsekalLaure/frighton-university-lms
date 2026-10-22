@@ -87,7 +87,7 @@ export function ReservationsPage() {
         setNotice('Reservation cancelled.');
       } else {
         await borrowReservation(id);
-        setNotice('Book checked out and reservation fulfilled.');
+        setNotice('Demo checkout complete and sample reservation fulfilled.');
       }
       await load();
     } catch (requestError: unknown) {
@@ -99,7 +99,7 @@ export function ReservationsPage() {
 
   return <>
     <div className="page-heading reservation-heading">
-      <div><div className="eyebrow">CIRCULATION DESK</div><h1>Reservations</h1><p>Reserve a title for a student and keep the queue moving.</p></div>
+      <div><div className="eyebrow">CIRCULATION DESK</div><h1>Reservations</h1><p>Frontend demo. Sample holds reset on refresh.</p></div>
       <span className="reservation-count"><BookMarked size={16} /> {activeCount} active</span>
     </div>
 
@@ -110,7 +110,7 @@ export function ReservationsPage() {
         <label>Book<select value={bookId} onChange={(event) => setBookId(event.target.value)} required><option value="">Select a title</option>{books.map((book) => <option key={book.id} value={book.id}>{book.title} — {book.author} ({book.availableCopies} available)</option>)}</select></label>
         <button className="button button-primary" disabled={submitting}>{submitting ? <><LoaderCircle className="spin" size={16} /> Reserving…</> : <><Plus size={16} /> Create reservation</>}</button>
       </form>
-      <p className="form-hint">Student standing is checked with SIS. The first active reservation gets priority when a copy is borrowed.</p>
+      <p className="form-hint">Use demo student IDs STU-2026-0001 through STU-2026-0004. Changes stay in browser memory.</p>
     </section>
 
     {(notice || error) && <div className={`reservation-message ${error ? 'is-error' : ''}`} role="status"><span>{error || notice}</span><button onClick={() => { setNotice(''); setError(''); }} aria-label="Dismiss message"><X size={15} /></button></div>}
