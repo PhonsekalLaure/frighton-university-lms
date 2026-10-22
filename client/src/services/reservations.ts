@@ -1,59 +1,35 @@
-import { ApiError } from './auth';
+import {
+  borrowDemoReservation, cancelDemoReservation, createDemoReservation,
+  demoBooks, getDemoReservations,
+} from '../data/libraryDemo';
 
-const apiBase = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
-
-export type ReservationBook = {
-  id: string;
-  title: string;
-  author: string;
-  availableCopies: number;
-};
-
+export type ReservationBook = { id: string; title: string; author: string; availableCopies: number };
 export type Reservation = {
-  id: string;
-  studentNumber: string;
-  studentName: string;
+  id: string; studentNumber: string; studentName: string;
   status: 'active' | 'fulfilled' | 'cancelled' | 'expired';
-  reservedAt: string;
-  expiresAt: string;
-  book: ReservationBook | null;
+  reservedAt: string; expiresAt: string; book: ReservationBook | null;
 };
-
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, {
-    credentials: 'include',
-    cache: 'no-store',
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  if (response.status === 204) return undefined as T;
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(response.status, data.error || 'Unable to complete the request.');
-  return data as T;
-}
-
+// Frontend demo adapter, shared by both reservation views. No network requests.
 export async function getReservationBooks(): Promise<ReservationBook[]> {
-  const data = await request<Array<Record<string, unknown>>>('/v1/books');
-  return data.map((book) => ({
-    id: String(book.books_id ?? book.id),
-    title: String(book.title),
-    author: String(book.author),
-    availableCopies: Number(book.copies ?? book.available_copies ?? book.availableCopies ?? 0),
+  return demoBooks.filter((book) => book.active).map((book) => ({
+    id: book.id, title: book.title, author: book.author, availableCopies: book.available,
   }));
 }
-
-export function getReservations(status = 'all'): Promise<Reservation[]> {
-  return request(`/v1/reservations?status=${encodeURIComponent(status)}`);
+export async function getReservations(status = 'all', _signal?: AbortSignal): Promise<Reservation[]> {
+  const books = await getReservationBooks();
+  return getDemoReservations().map((item): Reservation => ({
+    id: item.id, studentNumber: item.studentId, studentName: item.student,
+    status: item.status.toLowerCase() as Reservation['status'],
+    reservedAt: item.reserved, expiresAt: item.expires,
+    book: books.find((book) => book.id === item.bookId) ?? null,
+  })).filter((item) => status === 'all' || item.status === status);
 }
-
-export function createReservation(frightonId: string, bookId: string): Promise<Reservation> {
-  return request('/v1/reservations', { method: 'POST', body: JSON.stringify({ frightonId, bookId }) });
+export async function createReservation(studentId: string, bookId: string): Promise<void> {
+  createDemoReservation(studentId, bookId);
 }
-
-export function cancelReservation(id: string): Promise<void> {
-  return request(`/v1/reservations/${id}/cancel`, { method: 'POST', body: '{}' });
+export async function cancelReservation(id: string): Promise<void> {
+  cancelDemoReservation(id);
 }
-
-export function borrowReservation(id: string): Promise<void> {
-  return request(`/v1/reservations/${id}/borrow`, { method: 'POST', body: '{}' });
+export async function borrowReservation(id: string): Promise<void> {
+  borrowDemoReservation(id);
 }
