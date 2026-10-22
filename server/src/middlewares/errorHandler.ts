@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthError } from '../services/authService.js';
+import { HttpError } from '../utils/httpError.js';
 
 export const errorHandler = (
   err: Error & { status?: number; code?: string },
@@ -7,7 +8,11 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
-  if (err instanceof AuthError) {
+  if (err instanceof AuthError || err instanceof HttpError) {
+    if (err.status >= 500) {
+      const cause = err.cause && typeof err.cause === 'object' && 'code' in err.cause ? err.cause : undefined;
+      console.error('LMS dependency error:', { status: err.status, code: cause?.code, message: err.message });
+    }
     res.status(err.status).json({ error: err.message });
     return;
   }
