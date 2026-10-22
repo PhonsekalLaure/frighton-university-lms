@@ -14,6 +14,6 @@ export const config = {
   },
   sis: {
     apiUrl: process.env.SIS_API_URL || 'http://localhost:5000',
-    apiKey: process.env.SIS_API_KEY || 'frighton-lms-sis-shared-secret-key-change-in-prod',
+    apiKey: process.env.SIS_API_KEY || '',
   },
 };
