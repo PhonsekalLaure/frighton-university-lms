@@ -1,7 +1,21 @@
-import { Plus, ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Users } from 'lucide-react';
 import type { Staff } from '../../types/library';
-import { getInitials } from '../../utils/library';
-import { PageHeading, StatusPill } from '../../components/staff/StaffUI';
-export function LibrariansPage({ staff, onAdd, onToggle }: { staff: Staff[]; onAdd: () => void; onToggle: (email: string) => void }) {
-  return <><PageHeading eyebrow="ACCESS CONTROL" title="Librarian management" description="Manage staff access to the library operations console."><button className="staff-primary" onClick={onAdd}><Plus size={17}/> Add librarian</button></PageHeading><div className="admin-info-banner"><span><ShieldCheck size={18}/></span><div><strong>Administrator access</strong><small>You - re viewing this page as an Admin. Librarians cannot access staff account management.</small></div></div><section className="staff-panel table-panel"><div className="staff-list-heading"><div><span className="eyebrow-staff">LIBRARY TEAM</span><h2>Staff directory <small>{staff.length}</small></h2></div><button className="staff-outline" onClick={onAdd}><Plus size={15}/> Add staff</button></div><div className="table-scroll"><table className="staff-table staff-directory-table"><thead><tr><th>STAFF MEMBER</th><th>EMAIL</th><th>STATUS</th><th>ADDED</th><th/></tr></thead><tbody>{staff.map((person) => <tr key={person.email}><td><div className="student-cell"><span className="staff-avatar tiny-avatar">{getInitials(person.name)}</span><span><strong>{person.name}</strong><small>Librarian</small></span></div></td><td>{person.email}</td><td><StatusPill status={person.active ? 'Active' : 'Deactivated'}/></td><td>{person.since}</td><td><button className={`toggle-status ${person.active ? 'deactivate' : 'reactivate'}`} onClick={() => onToggle(person.email)}>{person.active ? 'Deactivate' : 'Reactivate'}</button></td></tr>)}</tbody></table></div><div className="staff-security-note"><ShieldCheck size={16}/><span>Production account creation and password resets must run through a secured server-side function.</span></div></section></>;
+import { formatDate, getInitials } from '../../utils/library';
+import { EmptyState, PageHeading, StatusPill } from '../../components/staff/StaffUI';
+
+export function LibrariansPage({ staff }: { staff: Staff[] }) {
+  return <>
+    <PageHeading eyebrow="ACCESS CONTROL" title="Librarian directory"/>
+    <section className="staff-panel table-panel">
+      <div className="staff-list-heading"><div><span className="eyebrow-staff">LIBRARY TEAM</span><h2>Staff directory <small>{staff.length}</small></h2></div></div>
+      <div className="table-scroll"><table className="staff-table staff-directory-table">
+        <thead><tr><th>STAFF MEMBER</th><th>EMAIL</th><th>STATUS</th><th>ADDED</th></tr></thead>
+        <tbody>{staff.map((person) => <tr key={person.email}>
+          <td><div className="student-cell"><span className="staff-avatar tiny-avatar">{getInitials(person.name)}</span><span><strong>{person.name}</strong><small>Librarian</small></span></div></td>
+          <td>{person.email}</td><td><StatusPill status={person.active ? 'Active' : 'Deactivated'}/></td><td>{formatDate(person.since)}</td>
+        </tr>)}</tbody>
+      </table>{staff.length === 0 && <EmptyState icon={<Users size={20}/>} title="No librarians found" text="No librarian accounts have been registered."/>}</div>
+      <div className="staff-security-note"><ShieldCheck size={16}/><span>Contact the system administrator to create or change staff accounts.</span></div>
+    </section>
+  </>;
 }
