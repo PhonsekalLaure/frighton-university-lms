@@ -5,7 +5,7 @@ export interface Librarian {
   id: string;
   email: string;
   fullName: string;
-  role: 'librarian';
+  role: 'librarian' | 'admin';
 }
 
 export class AuthError extends Error {
@@ -34,8 +34,9 @@ export async function findLibrarian(user: User): Promise<Librarian> {
   if (error) {
     throw new AuthError(503, 'Staff verification is temporarily unavailable. Please try again.');
   }
-  if (!profile || typeof profile.role !== 'string' || profile.role.toLowerCase() !== 'librarian') {
-    throw new AuthError(403, 'This portal is restricted to active librarians.');
+  const staffRole = typeof profile?.role === 'string' ? profile.role.toLowerCase() : '';
+  if (!profile || (staffRole !== 'librarian' && staffRole !== 'admin')) {
+    throw new AuthError(403, 'This portal is restricted to active library staff.');
   }
   if (profile.is_active !== true) {
     throw new AuthError(403, 'Your staff account has been deactivated. Please contact the Library Administrator.');
@@ -45,7 +46,7 @@ export async function findLibrarian(user: User): Promise<Librarian> {
     id: profile.users_id,
     email: profile.email,
     fullName: [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' '),
-    role: 'librarian',
+    role: staffRole,
   };
 }
 
