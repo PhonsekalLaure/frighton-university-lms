@@ -5,7 +5,7 @@ import { authRouter } from './routes/authRoutes.js';
 import { healthRouter } from './routes/healthRoutes.js';
 import { bookRouter } from './routes/bookRoutes.js';
 import { loanRouter } from './routes/loanRoutes.js';
-import { reservationRouter } from './routes/reservationRoutes.js';
+import { staffRouter } from './routes/staffRoutes.js';
 import { protectCookieRequests, requireLibrarian } from './middlewares/auth.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 
@@ -32,7 +32,8 @@ export const createApp = (): Express => {
   app.use('/api/auth', authRouter);
   app.use('/api/v1/books', requireLibrarian, bookRouter);
   app.use('/api/v1/loans', requireLibrarian, loanRouter);
-  app.use('/api/v1/reservations', requireLibrarian, reservationRouter);
+
+  app.use('/api/v1/staff', requireLibrarian, staffRouter);
 
   app.use(errorHandler);
   return app;
