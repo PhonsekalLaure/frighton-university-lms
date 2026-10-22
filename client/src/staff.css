@@ -83,6 +83,7 @@
 
 /* Keep the whole LMS at the 110% browser-zoom scale on every page. */
 .staff-app,.staff-login{zoom:1.1}
+.auth-loading{min-height:100vh;display:grid;place-content:center;background:#f7f5ef;color:#343956;font:500 16px/1.5 'DM Sans',sans-serif}
 .borrower-tabs button{font-size:11px;padding-bottom:10px}
 .borrower-tabs b{min-width:20px;padding:2px 6px;font-size:10px}
 .row-actions button.row-archive{width:28px;min-width:28px;padding:0;display:grid;place-items:center;color:#68735e}
