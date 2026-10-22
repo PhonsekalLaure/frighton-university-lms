@@ -41,6 +41,16 @@ export function useAuth() {
     };
   }, [librarian]);
 
+  useEffect(() => {
+    const expired = () => {
+      generation.current += 1;
+      setLibrarian(null);
+      setSessionError('Your session has expired. Please sign in again.');
+    };
+    window.addEventListener('lms:session-expired', expired);
+    return () => window.removeEventListener('lms:session-expired', expired);
+  }, []);
+
   const login = async (email: string, password: string, remember: boolean) => {
     setSessionError('');
     const profile = await signIn(email, password, remember);
