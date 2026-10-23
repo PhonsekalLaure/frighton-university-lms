@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowLeftRight, ArrowRight, BookmarkCheck, CheckCircle2, ChevronDown, Clock3, FileText, LayoutDashboard, Library, LogOut, Menu, Search, UserCog, Users, X } from 'lucide-react';
 import type { BookRecord, Loan, Page, Reservation, Staff } from './types/library';
 import { formatDate, getInitials, money } from './utils/library';
@@ -8,7 +8,6 @@ import { useRemoteData } from './hooks/useRemoteData';
 import { getAllPages } from './services/api';
 import { archiveBook, borrowBook, getBooks, getLoan, getLoans, getPolicy, returnBook, saveBook as persistBook, toLoan } from './services/library';
 import { cancelReservation, createReservation, getReservations } from './services/reservations';
-import { demoBooks, getDemoLoans, returnDemoLoan } from './data/libraryDemo';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './features/library/DashboardPage';
 import { BooksPage } from './features/library/BooksPage';
@@ -52,12 +51,10 @@ export default function App() {
   const { librarian, checking, sessionError, login, logout } = useAuth();
   const role = librarian?.role === 'admin' ? 'Admin' : 'Librarian';
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname) ?? 'dashboard');
-  const demoPage = page === 'borrowed';
-  const librarySessionId = !demoPage ? librarian?.id : undefined;
+  const librarySessionId = librarian?.id;
   const catalogRecords = useRemoteData(getBooks, librarySessionId);
   const loanRecords = useRemoteData(getLoans, librarySessionId);
   const policyRecord = useRemoteData(getPolicy, librarySessionId);
-  const demoLoanRecords = useRemoteData(getDemoLoans, librarian?.id);
   const reservationRecords = useRemoteData(loadReservations, librarian?.id);
   const staffRecords = useRemoteData(loadStaff, librarian?.role === 'admin' && page === 'librarians' ? librarian.id : undefined);
   const books = catalogRecords.data ?? [];
@@ -69,7 +66,6 @@ export default function App() {
     status: ({ active: 'Active', fulfilled: 'Fulfilled', cancelled: 'Cancelled', expired: 'Expired' } as const)[item.status],
   }));
   const staff = staffRecords.data ?? [];
-  const demoLoans = demoLoanRecords.data ?? [];
   const [mobileNav, setMobileNav] = useState(false);
   const [lookup, setLookup] = useState('');
   const [modal, setModal] = useState<'book' | 'reservation' | null>(null);
@@ -80,6 +76,8 @@ export default function App() {
   const mutationLock = useRef(false);
   const [revision, setRevision] = useState(0);
   const [fineReceipt, setFineReceipt] = useState<{ loan: Loan; amount: number; receipt: string } | null>(null);
+  const [returnReceipt, setReturnReceipt] = useState<Loan | null>(null);
+  const [checkoutReceipt, setCheckoutReceipt] = useState<Loan | null>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [circulationTab, setCirculationTab] = useState<'borrow' | 'return'>('borrow');
   const [borrowId, setBorrowId] = useState('');
@@ -111,25 +109,28 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setModal(null); setConfirmation(null); setFineReceipt(null);
+    setModal(null); setConfirmation(null); setFineReceipt(null); setCheckoutReceipt(null); setReturnReceipt(null);
     setBorrowId(''); setBorrowBookId(''); setReturnLoanId(''); setLookup('');
     setNotice(''); setOperationError('');
   }, [librarian?.id]);
 
   useEffect(() => {
     if (!librarian) return;
+    let lastRefresh = Date.now();
     const refresh = () => {
+      if (document.visibilityState === 'hidden' || Date.now() - lastRefresh < 60000) return;
       if (!mutationLock.current) {
+        lastRefresh = Date.now();
         if (librarySessionId) {
           void catalogRecords.reload(); void loanRecords.reload(); void policyRecord.reload();
         }
-        void reservationRecords.reload(); void demoLoanRecords.reload();
+        void reservationRecords.reload();
       }
     };
     const timer = window.setInterval(refresh, 60000);
     window.addEventListener('focus', refresh);
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
-  }, [librarian, catalogRecords.reload, loanRecords.reload, policyRecord.reload, reservationRecords.reload, demoLoanRecords.reload, librarySessionId]);
+  }, [librarian, catalogRecords.reload, loanRecords.reload, policyRecord.reload, reservationRecords.reload, librarySessionId]);
 
   useEffect(() => {
     if (librarian && librarian.role !== 'admin' && page === 'librarians') {
@@ -138,11 +139,10 @@ export default function App() {
     }
   }, [librarian?.role, page]);
 
-  const activeLoans = loans.filter((loan) => !loan.returned);
+  const activeLoans = useMemo(() => loans.filter((loan) => !loan.returned), [loans]);
   const overdueLoans = activeLoans.filter((loan) => loan.overdueDays > 0);
   const activeReservations = reservations.filter((item) => item.status === 'Active');
-  const demoBookById = (id: string) => demoBooks.find((book) => book.id === id);
-  const bookById = (id: string) => books.find((book) => book.id === id) ?? demoBookById(id);
+  const bookById = useCallback((id: string) => books.find((book) => book.id === id), [books]);
   const go = (next: Page) => {
     if (pending || (next === 'librarians' && role !== 'Admin')) return;
     if (next !== page) window.history.pushState({ libraryPage: next }, '', pagePaths[next]);
@@ -179,10 +179,25 @@ export default function App() {
   };
   const processBorrow = (event: FormEvent) => {
     event.preventDefault();
-    if (!borrowPatron.patron?.canBorrow || borrowPatron.loading) return;
+    if (mutationLock.current) return;
+    const student = borrowPatron.patron;
+    const book = books.find((item) => item.id === borrowBookId);
+    if (borrowPatron.loading || !student?.canBorrow || !borrowId) {
+      setOperationError(borrowPatron.loading ? 'Wait for the student eligibility check to finish.'
+        : student?.blockedReason || borrowPatron.error || 'Select an eligible student before confirming checkout.');
+      return;
+    }
+    if (!book?.active || book.available < 1) {
+      setOperationError('Select an available book from the title suggestions before confirming checkout.');
+      return;
+    }
     void runMutation(async () => {
-      await borrowBook(borrowId.trim().toUpperCase(), borrowBookId);
-      setBorrowId(''); setBorrowBookId(''); flash('Book checked out successfully.');
+      const { loan } = await borrowBook(borrowId.trim().toUpperCase(), book.id);
+      setCheckoutReceipt(toLoan({
+        ...loan, studentNumber: student.frightonId, studentName: student.name,
+        bookTitle: book.title, bookAuthor: book.author,
+      }));
+      setBorrowId(''); setBorrowBookId('');
       await refreshLibrary();
     });
   };
@@ -197,9 +212,8 @@ export default function App() {
       }
       const { loan } = await returnBook(displayed.id, displayed.fineAmount > 0);
       const returned = toLoan({ ...loan, studentNumber: displayed.studentId, studentName: displayed.student, bookTitle: displayed.bookTitle, bookAuthor: displayed.bookAuthor });
-      if (loan.fineAmount > 0 && loan.receiptNumber) setFineReceipt({ loan: returned, amount: loan.fineAmount, receipt: loan.receiptNumber });
+      setReturnReceipt(returned);
       setReturnLoanId('');
-      flash(loan.fineAmount ? `Return complete. ${money(loan.fineAmount)} collected; receipt ${loan.receiptNumber}.` : 'Return complete. No fine due.');
       await refreshLibrary();
     });
   };
@@ -242,7 +256,7 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'circulation', label: 'Circulation desk', icon: ArrowLeftRight },
     { id: 'books', label: 'Book catalog', icon: Library },
-    { id: 'borrowed', label: 'Active borrowers', icon: Users, count: demoLoans.filter((loan) => !loan.returned && loan.overdueDays > 0).length },
+    { id: 'borrowed', label: 'Active borrowers', icon: Users, count: overdueLoans.length },
     { id: 'reservations', label: 'Reservations', icon: BookmarkCheck },
     { id: 'librarians', label: 'Librarian directory', icon: UserCog, admin: true },
   ];
@@ -252,7 +266,7 @@ export default function App() {
   const pageRecords = page === 'librarians' ? [staffRecords]
     : page === 'books' ? [catalogRecords]
     : page === 'reservations' ? [reservationRecords, catalogRecords]
-    : page === 'borrowed' ? [demoLoanRecords]
+    : page === 'borrowed' ? [loanRecords, catalogRecords]
     : page === 'circulation' ? [catalogRecords, loanRecords, policyRecord]
     : [catalogRecords, loanRecords, reservationRecords];
   const loading = pageRecords.some((record) => record.loading);
@@ -276,19 +290,20 @@ export default function App() {
         <button className="staff-menu-button" onClick={() => setMobileNav((open) => !open)} aria-label="Toggle navigation">{mobileNav ? <X size={20}/> : <Menu size={20}/>}</button>
         <div className="staff-breadcrumb"><span>Frighton Library</span><b>/</b><strong>{pageLabels[page]}</strong></div>
         <div className="staff-top-actions">
-          <label className="quick-lookup"><Search size={16}/><input aria-label="Quick student ID lookup" placeholder={demoPage ? 'Student lookup at circulation desk' : 'Look up student ID'} disabled={demoPage} value={lookup} onChange={(event) => setLookup(event.target.value)}/><kbd>Ctrl + K</kbd></label>
-          {lookup && !demoPage && <div className="lookup-popover">{lookupStudent ? <><span className="staff-avatar small-avatar">{getInitials(lookupStudent.name)}</span><div><strong>{lookupStudent.name}</strong><small>{globalStudent}</small></div><button onClick={() => { setBorrowId(globalStudent); setCirculationTab('borrow'); go('circulation'); setLookup(''); }}>Start checkout <ArrowRight size={14}/></button></> : <span className="lookup-not-found">{quickPatron.loading ? 'Looking up student...' : quickPatron.error || 'Enter a student ID'}</span>}</div>}
+          <label className="quick-lookup"><Search size={16}/><input aria-label="Quick student ID lookup" placeholder="Look up student ID" value={lookup} onChange={(event) => setLookup(event.target.value)}/><kbd>Ctrl + K</kbd></label>
+          {lookup && <div className="lookup-popover">{lookupStudent ? <><span className="staff-avatar small-avatar">{getInitials(lookupStudent.name)}</span><div><strong>{lookupStudent.name}</strong><small>{globalStudent}</small></div><button onClick={() => { setBorrowId(globalStudent); setCirculationTab('borrow'); go('circulation'); setLookup(''); }}>Start checkout <ArrowRight size={14}/></button></> : <span className="lookup-not-found">{quickPatron.loading ? 'Looking up student...' : quickPatron.error || 'Enter a student ID'}</span>}</div>}
           <span className="topbar-divider"/><button className="top-staff"><span className="staff-avatar small-avatar">{getInitials(staffName)}</span><span><strong>{staffName}</strong><small>{role}</small></span><ChevronDown size={14}/></button>
           <button className="top-signout" disabled={pending} onClick={() => { void logout().catch((error: unknown) => setOperationError(error instanceof Error ? error.message : 'Unable to sign out.')); }} aria-label="Sign out"><LogOut size={17}/></button>
         </div>
       </header>
       <div className="staff-content" key={page} aria-busy={pending || loading} inert={pending}>
-        {operationError && <div className="inline-warning" role="alert"><AlertTriangle size={17}/>{operationError}</div>}
-        {loading || dataError || !ready ? <RemoteState loading={loading} error={dataError} onRetry={retry}/> : <>
+        {operationError && !(page === 'circulation' && circulationTab === 'borrow') && <div className="inline-warning" role="alert"><AlertTriangle size={17}/>{operationError}</div>}
+        {!ready ? <RemoteState loading={loading} error={dataError} onRetry={retry}/> : <>
+        {dataError && <div className="inline-warning" role="alert"><AlertTriangle size={17}/><span>Records could not be refreshed: {dataError}</span><button type="button" className="staff-text-link" onClick={retry}>Try again</button></div>}
         {page === 'dashboard' && <DashboardPage books={books} activeLoans={activeLoans} overdueLoans={overdueLoans} reservations={activeReservations} bookById={bookById} onNavigate={go} onCirculation={(tab) => { setCirculationTab(tab); go('circulation'); }} />}
         {page === 'books' && <BooksPage books={books} query={catalogQuery} setQuery={setCatalogQuery} filter={bookStatusFilter} setFilter={setBookStatusFilter} onAdd={() => startBookForm()} onEdit={startBookForm} onArchive={requestArchive} onReserve={(bookId) => { setReservationForm({ studentId: '', bookId }); setModal('reservation'); }} />}
-        {page === 'circulation' && policy && <CirculationPage tab={circulationTab} setTab={setCirculationTab} books={books} activeLoans={activeLoans} loans={loans} policy={policy} borrowId={borrowId} setBorrowId={setBorrowId} borrowBookId={borrowBookId} setBorrowBookId={setBorrowBookId} returnLoanId={returnLoanId} setReturnLoanId={setReturnLoanId} patron={borrowPatron.patron} patronLoading={borrowPatron.loading} patronError={borrowPatron.error} returnQuote={returnQuote} quoteLoading={returnDetails.loading} quoteError={returnDetails.error} pending={pending} bookById={bookById} onBorrow={processBorrow} onReturn={processReturn} onReserve={() => { setReservationForm({ studentId: '', bookId: borrowBookId }); setModal('reservation'); }} />}
-        {page === 'borrowed' && <BorrowersPage loans={demoLoans} books={demoBooks} query={loanQuery} setQuery={setLoanQuery} filter={loanFilter} setFilter={setLoanFilter} bookById={demoBookById} onReturn={(id) => { void runMutation(async () => { await returnDemoLoan(id); await demoLoanRecords.reload(); flash('Demo return complete. Changes reset on refresh.'); }); }} />}
+        {page === 'circulation' && policy && <CirculationPage tab={circulationTab} setTab={setCirculationTab} books={books} activeLoans={activeLoans} loans={loans} policy={policy} borrowId={borrowId} setBorrowId={setBorrowId} borrowBookId={borrowBookId} setBorrowBookId={setBorrowBookId} returnLoanId={returnLoanId} setReturnLoanId={setReturnLoanId} patron={borrowPatron.patron} patronLoading={borrowPatron.loading} patronError={borrowPatron.error} checkoutError={operationError} returnQuote={returnQuote} quoteLoading={returnDetails.loading} quoteError={returnDetails.error} pending={pending} bookById={bookById} onBorrow={processBorrow} onReturn={processReturn} onReserve={() => { setReservationForm({ studentId: '', bookId: borrowBookId }); setModal('reservation'); }} />}
+        {page === 'borrowed' && <BorrowersPage loans={loans} books={books} query={loanQuery} setQuery={setLoanQuery} filter={loanFilter} setFilter={setLoanFilter} bookById={bookById} onReturn={(id) => { setReturnLoanId(id); setCirculationTab('return'); go('circulation'); }} />}
         {page === 'reservations' && <ReservationsPage reservations={reservations} query={reservationQuery} setQuery={setReservationQuery} filter={reservationFilter} setFilter={setReservationFilter} bookById={(id) => books.find((book) => book.id === id)} onNew={() => { setReservationForm({ studentId: '', bookId: '' }); setModal('reservation'); }} onCancel={requestCancelReservation} onBorrow={(reservation) => { setBorrowId(reservation.studentId); setBorrowBookId(reservation.bookId); setCirculationTab('borrow'); go('circulation'); }} />}
         {page === 'librarians' && role === 'Admin' && <LibrariansPage staff={staff}/>}
         </>}
@@ -300,6 +315,35 @@ export default function App() {
     {modal === 'reservation' && <Modal title="New reservation" subtitle="Hold a catalog title for an eligible student for three days." onClose={closeModal}><form className="staff-form" onSubmit={saveReservation}>{operationError && <p role="alert" className="inline-warning">{operationError}</p>}<fieldset className="workflow-fields" disabled={pending}><div className="staff-field"><span>Student</span><ReservationStudentSearch onSelect={(studentId) => setReservationForm((current) => ({ ...current, studentId }))}/></div><Field label="Book"><select required value={reservationForm.bookId} onChange={(event) => setReservationForm({ ...reservationForm, bookId: event.target.value })}><option value="">Choose a title</option>{books.filter((book) => book.active).map((book) => <option value={book.id} key={book.id}>{book.title} {book.available ? ` -  ${book.available} available` : ' -  Out of stock'}</option>)}</select></Field><FormActions onCancel={closeModal} pending={pending} submit="Create reservation"/></fieldset></form></Modal>}
 
     {confirmation && <Modal title={confirmation.title} subtitle={confirmation.message} onClose={() => setConfirmation(null)}><div className="form-actions confirmation-actions"><button type="button" className="staff-outline" onClick={() => setConfirmation(null)}>Go back</button><button type="button" className={confirmation.danger ? 'staff-primary staff-danger' : 'staff-primary'} onClick={() => { const pending = confirmation; setConfirmation(null); pending.onConfirm(); }}>{confirmation.confirmLabel}</button></div></Modal>}
+    {checkoutReceipt && <Modal title="Checkout successful" subtitle="The book loan has been saved." onClose={() => setCheckoutReceipt(null)}>
+      <div className="checkout-success"><CheckCircle2 size={34} aria-hidden="true"/><strong>Book checked out successfully</strong></div>
+      <div className="receipt-fields">
+        <span>Student<strong>{checkoutReceipt.student}</strong></span>
+        <span>Student number<strong>{checkoutReceipt.studentId}</strong></span>
+        <span>Book<strong>{checkoutReceipt.bookTitle}</strong></span>
+        <span>Checked out<strong>{formatDate(checkoutReceipt.borrowed)}</strong></span>
+        <span>Due date<strong>{formatDate(checkoutReceipt.due)}</strong></span>
+      </div>
+      <div className="form-actions"><button type="button" className="staff-outline" disabled={pending} onClick={() => { setCheckoutReceipt(null); go('borrowed'); }}>View active borrowers</button><button type="button" className="staff-primary" onClick={() => setCheckoutReceipt(null)}>Done</button></div>
+    </Modal>}
+    {returnReceipt && <Modal title="Return successful" subtitle="The book return has been saved." onClose={() => setReturnReceipt(null)}>
+      <div className="checkout-success"><CheckCircle2 size={38} aria-hidden="true"/><strong>Book returned successfully</strong></div>
+      <div className="receipt-fields">
+        <span>Borrower<strong>{returnReceipt.student}</strong></span>
+        <span>Student number<strong>{returnReceipt.studentId}</strong></span>
+        <span>Returned book<strong>{returnReceipt.bookTitle}</strong></span>
+        <span>Return date<strong>{formatDate(returnReceipt.returned!)}</strong></span>
+        <span>Fine collected<strong>{returnReceipt.finePaid ? money(returnReceipt.finePaid) : 'No fine due'}</strong></span>
+        {returnReceipt.receipt && <span>Receipt number<strong>{returnReceipt.receipt}</strong></span>}
+      </div>
+      <div className="form-actions">
+        {returnReceipt.receipt && <button type="button" className="staff-outline" onClick={() => {
+          setFineReceipt({ loan: returnReceipt, amount: returnReceipt.finePaid ?? 0, receipt: returnReceipt.receipt! });
+          setReturnReceipt(null);
+        }}>View payment receipt</button>}
+        <button type="button" className="staff-primary" onClick={() => setReturnReceipt(null)}>Done</button>
+      </div>
+    </Modal>}
     {fineReceipt && <Modal title="Fine payment receipt" subtitle="Frighton University Library  -  Circulation desk" onClose={() => setFineReceipt(null)}><div className="receipt-card"><div className="receipt-brand"><span className="school-seal staff-brand-seal receipt-seal" aria-label="Frighton University seal"><span className="seal-monogram">F</span><i/><small>1912</small></span><span><strong>FRIGHTON UNIVERSITY</strong><small>LIBRARY SERVICES</small></span></div><div className="receipt-number-block"><span>RECEIPT NUMBER</span><strong>{fineReceipt.receipt}</strong></div><div className="receipt-fields"><span>Student<strong>{fineReceipt.loan.student}</strong></span><span>Student ID<strong>{fineReceipt.loan.studentId}</strong></span><span>Returned book<strong>{bookById(fineReceipt.loan.bookId)?.title ?? fineReceipt.loan.bookTitle}</strong></span><span>Payment date<strong>{formatDate(fineReceipt.loan.returned!)}</strong></span></div><div className="receipt-total"><span>Fine collected</span><strong>{money(fineReceipt.amount)}</strong></div><p>Thank you. Keep this receipt for your records.</p></div><div className="form-actions"><button className="staff-outline" onClick={() => setFineReceipt(null)}>Close</button><button className="staff-primary" onClick={() => window.print()}><FileText size={15}/> Print receipt</button></div></Modal>}
   </div>;
 }

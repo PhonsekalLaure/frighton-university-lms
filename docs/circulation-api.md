@@ -11,8 +11,9 @@ No additional dependencies or background jobs are needed.
 Use the production tables in `schema.md`, including the SIS `profiles` table,
 then apply `supabase/migrations/003_reservations.sql`,
 `supabase/migrations/004_circulation.sql`, `supabase/migrations/005_catalog.sql`,
-`supabase/migrations/006_reservation_api.sql`, and
-`supabase/migrations/007_reservation_student_search.sql` in that order on PostgreSQL 15+.
+`supabase/migrations/006_reservation_api.sql`,
+`supabase/migrations/007_reservation_student_search.sql`, and
+`supabase/migrations/008_single_active_loan.sql` in that order on PostgreSQL 15+.
 The historical migrations 001/002 use a different schema and cannot bootstrap this
 production schema. Migration 004 does not modify existing loan or student data.
 It replaces the legacy `return_book(uuid, uuid, text)` function with
@@ -25,8 +26,10 @@ sufficient for circulation. Staff must have active Librarian or Admin user recor
 
 Copy missing settings from `server/.env.example` into the existing `server/.env`.
 Use actual project credentials locally. Never expose the service role or SIS key
-in client variables. Configure `SIS_API_KEY` to match the SIS server.
-Checkout requires a successful SIS standing check. Returns work independently of SIS.
+in client variables. Checkout uses the shared student profile and LMS loan records;
+it does not require the separate SIS API. Students must have an active account and
+zero unreturned loans. Returned loan history does not block checkout. SIS API
+credentials are needed only for explicit integrations such as reporting overdue holds.
 
 ## Endpoints
 
@@ -74,11 +77,11 @@ rate and Manila calendar days, records payment, restores stock once, and generat
 `RCP-YYYYMMDD-XXXXXXXX`. A repeated return responds with 409.
 Clients cannot set dates, fines, receipts, or staff IDs through these endpoints.
 
-Checkout blocks inactive students, overdue borrowers, the active-loan limit,
+Checkout blocks inactive students and students with any unreturned loan,
 archived titles, unavailable stock, and titles reserved for another student.
 Successful checkout fulfills the student's first matching unexpired reservation.
 Student and book row locks protect simultaneous checkout requests. Policy
-constants are defined once in `circulation_policy()` in migration 004.
+constants are defined in `circulation_policy()`; migration 008 sets the active-loan limit to one.
 
 ## Errors and validation
 
@@ -101,11 +104,9 @@ receipts from the backend. Sign-in uses the staff session APIs. Failed or empty
 backend responses never fall back to sample records.
 
 The Library Operations Reservations page uses the authenticated backend API and
-the production catalog. Reservation creation verifies local LMS account, overdue,
-and loan-limit eligibility without requiring the future SIS API. Listing releases expired holds, cancellation is
+the production catalog. Reservation creation verifies the shared student account and requires zero active loans without the separate SIS API. Listing releases expired holds, cancellation is
 recorded in reservation history, and Borrow Now opens the real Circulation Desk
-with the student and title pre-filled. The Active Borrowers page remains a separate
-frontend demo. Loan list/detail endpoints remain for the Circulation Desk.
+with the student and title pre-filled. The Active Borrowers page displays saved loans and return history from the same backend; its return action opens the Circulation Desk for fine review and confirmation. Successful checkout opens a modal using the saved loan response. Loan list/detail endpoints remain for the Circulation Desk.
 See [file-change-guide.md](file-change-guide.md) for the file-by-file explanation.
 
 Migration 005 adds shelf locations and catalog read/write functions. Copy totals are derived

@@ -11,6 +11,7 @@ import { errorHandler } from '../src/middlewares/errorHandler.js';
 import type { LoanDetailsRecord, LoanRecord } from '../src/models/loan.js';
 import { createLoanRouter } from '../src/routes/loanRoutes.js';
 import { LoanService } from '../src/services/loanService.js';
+import { sisService } from '../src/services/sisService.js';
 import { databaseError } from '../src/utils/databaseError.js';
 import { HttpError } from '../src/utils/httpError.js';
 import { parseBorrowBody, parseLoanFilters, parseReturnBody } from '../src/validators/loanValidators.js';
@@ -98,11 +99,12 @@ test('validates bodies and query values without coercing untrusted input', () =>
   }
 });
 
-test('eligibility blocks inactive, overdue, and max-loan students before checkout', async () => {
+test('eligibility blocks inactive students and any active borrower before checkout', async () => {
   for (const overrides of [
     { findPatron: async () => ({ ...patron, user: { ...patron.user, is_active: false } }) },
     { findPatron: async () => ({ ...patron, academic_status: 'suspended' }) },
     { getActiveLoans: async () => [{ overdue_days: 1 }] },
+    { getActiveLoans: async () => [{ overdue_days: 0 }] },
     { getActiveLoans: async () => Array.from({ length: 3 }, () => ({ overdue_days: 0 })) },
   ]) {
     let borrowed = false;
@@ -118,7 +120,55 @@ test('eligibility blocks inactive, overdue, and max-loan students before checkou
   }
 });
 
-test('SIS holds, mismatched students, and SIS failures fail closed', async () => {
+test('shared student records allow checkout without SIS and require return before another checkout', async (t) => {
+  const sisLookup = t.mock.method(sisService, 'checkStudentStatus', async () => {
+    throw new Error('SIS is unavailable');
+  });
+  let activeLoans: Array<{ overdue_days: number }> = [];
+  let checkoutCount = 0;
+  const service = new LoanService(repository({
+    getActiveLoans: async () => activeLoans,
+    borrow: async () => {
+      checkoutCount++;
+      activeLoans = [{ overdue_days: 0 }];
+      return loan;
+    },
+    returnBook: async () => {
+      activeLoans = [];
+      return { ...loan, return_date: '2026-10-22T10:00:00Z', returned_to: staffId };
+    },
+  }));
+  assert.equal((await service.verifyPatron(studentNumber)).canBorrow, true);
+  await service.borrow({ frightonId: studentNumber, bookId }, staffId);
+  const blocked = await service.verifyPatron(studentNumber);
+  assert.equal(blocked.canBorrow, false);
+  assert.equal(blocked.activeLoanCount, 1);
+  assert.match(blocked.blockedReason!, /Return all borrowed books/);
+  await assert.rejects(service.borrow({ frightonId: studentNumber, bookId }, staffId), { status: 403 });
+  assert.equal(checkoutCount, 1);
+  await service.returnBook(loanId, staffId, false);
+  assert.equal((await service.verifyPatron(studentNumber)).canBorrow, true);
+  await service.borrow({ frightonId: studentNumber, bookId }, staffId);
+  assert.equal(checkoutCount, 2);
+  assert.equal(sisLookup.mock.callCount(), 0);
+});
+
+test('HTTP checkout rejects an active borrower without creating another loan', async () => {
+  const service = new LoanService(repository({
+    getActiveLoans: async () => [{ overdue_days: 0 }],
+    borrow: async () => { throw new Error('An active borrower must not reach checkout'); },
+  }));
+  await withServer(testApp(service), async (base) => {
+    const response = await fetch(base + '/loans/borrow', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frightonId: studentNumber, bookId }),
+    });
+    assert.equal(response.status, 403);
+    assert.match((await response.json()).error, /already has an active loan/);
+  });
+});
+
+test('explicit SIS integrations still reject holds, mismatched students, and failed verification', async () => {
   for (const status of [{ ...sisStatus, canBorrow: false }, { ...sisStatus, frightonId: 'ANOTHER-STUDENT' }]) {
     const service = new LoanService(repository(), async () => status);
     await assert.rejects(service.borrow({ frightonId: studentNumber, bookId }, staffId), { status: 403 });

@@ -34,8 +34,15 @@ export const saveBook = (id: string | null, book: BookInput) => apiRequest<BookR
 );
 export const archiveBook = (id: string) =>
   apiRequest<BookRecord>('/v1/books/' + encodeURIComponent(id) + '/archive', { method: 'POST', body: '{}' });
-export const borrowBook = (frightonId: string, bookId: string) =>
-  apiRequest<{ loan: LoanResponse }>('/v1/loans/borrow', { method: 'POST', body: JSON.stringify({ frightonId, bookId }) });
+export async function borrowBook(frightonId: string, bookId: string): Promise<{ loan: LoanResponse }> {
+  const response = await apiRequest<{ loan: LoanResponse }>('/v1/loans/borrow', {
+    method: 'POST', body: JSON.stringify({ frightonId, bookId }),
+  });
+  if (!response?.loan?.id || response.loan.bookId !== bookId || !response.loan.dueDate || !response.loan.borrowedAt) {
+    throw new Error('Checkout could not be confirmed. Check active borrowers before trying again.');
+  }
+  return response;
+}
 export const getLoan = (id: string, signal?: AbortSignal) =>
   apiRequest<LoanResponse>('/v1/loans/' + encodeURIComponent(id), { signal });
 export const returnBook = (id: string, fineCollected: boolean) =>

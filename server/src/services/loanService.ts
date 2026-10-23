@@ -10,7 +10,7 @@ type CheckStudentStatus = (studentNumber: string) => Promise<SISStudentStatus>;
 export class LoanService {
   constructor(
     private readonly repository: LoanRepository = loanRepository,
-    private readonly checkStudentStatus: CheckStudentStatus | null = (id) => sisService.checkStudentStatus(id),
+    private readonly checkStudentStatus: CheckStudentStatus | null = null,
   ) {}
 
   async getPolicy() {
@@ -28,12 +28,12 @@ export class LoanService {
     let blockedReason: string | null = null;
     if (!student.user.is_active || student.academic_status !== 'active') {
       blockedReason = 'This student account is inactive.';
-    } else if (overdueLoanCount > 0) {
-      blockedReason = 'This student has overdue items. Resolve them before borrowing.';
-    } else if (loans.length >= policy.max_active_loans) {
-      blockedReason = `This student has reached the maximum of ${policy.max_active_loans} active loans.`;
+    } else if (loans.length > 0) {
+      blockedReason = 'This student already has an active loan. Return all borrowed books before borrowing again.';
     }
 
+    // Shared student profiles and unreturned LMS loans determine eligibility.
+    // A separate SIS check is used only when explicitly supplied by an integration.
     let sisStatus: SISStudentStatus | null = null;
     if (!blockedReason && this.checkStudentStatus) {
       try {

@@ -36,5 +36,10 @@ export function useRemoteData<T>(load: (signal: AbortSignal) => Promise<T>, sess
     return () => controller.current?.abort();
   }, [reload, sessionId]);
 
-  return { data: sessionId ? data : null, loading, error, reload };
+  return {
+    data: sessionId ? data : null,
+    // Refreshes preserve the mounted page and its form selections.
+    loading: loading && data === null,
+    error, reload,
+  };
 }
