@@ -1,6 +1,7 @@
 import { apiRequest, getAllPages } from './api';
 
 export type ReservationBook = { id: string; title: string; author: string; availableCopies: number };
+export type ReservationStudent = { studentNumber: string; name: string; program: string | null };
 export type Reservation = {
   id: string; studentNumber: string; studentName: string;
   status: 'active' | 'fulfilled' | 'cancelled' | 'expired';
@@ -9,6 +10,10 @@ export type Reservation = {
 
 export function getReservations(status = 'all', signal?: AbortSignal): Promise<Reservation[]> {
   return getAllPages<Reservation>(`/v1/reservations?status=${encodeURIComponent(status)}`, signal);
+}
+
+export function searchReservationStudents(query: string, signal?: AbortSignal): Promise<ReservationStudent[]> {
+  return apiRequest<ReservationStudent[]>(`/v1/reservations/students?q=${encodeURIComponent(query)}`, { signal });
 }
 
 export function createReservation(frightonId: string, bookId: string): Promise<Reservation> {
