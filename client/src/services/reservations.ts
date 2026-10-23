@@ -1,35 +1,24 @@
-import {
-  borrowDemoReservation, cancelDemoReservation, createDemoReservation,
-  demoBooks, getDemoReservations,
-} from '../data/libraryDemo';
+import { apiRequest, getAllPages } from './api';
 
 export type ReservationBook = { id: string; title: string; author: string; availableCopies: number };
 export type Reservation = {
   id: string; studentNumber: string; studentName: string;
   status: 'active' | 'fulfilled' | 'cancelled' | 'expired';
-  reservedAt: string; expiresAt: string; book: ReservationBook | null;
+  reservedAt: string; expiresAt: string; book: ReservationBook;
 };
-// Frontend demo adapter, shared by both reservation views. No network requests.
-export async function getReservationBooks(): Promise<ReservationBook[]> {
-  return demoBooks.filter((book) => book.active).map((book) => ({
-    id: book.id, title: book.title, author: book.author, availableCopies: book.available,
-  }));
+
+export function getReservations(status = 'all', signal?: AbortSignal): Promise<Reservation[]> {
+  return getAllPages<Reservation>(`/v1/reservations?status=${encodeURIComponent(status)}`, signal);
 }
-export async function getReservations(status = 'all', _signal?: AbortSignal): Promise<Reservation[]> {
-  const books = await getReservationBooks();
-  return getDemoReservations().map((item): Reservation => ({
-    id: item.id, studentNumber: item.studentId, studentName: item.student,
-    status: item.status.toLowerCase() as Reservation['status'],
-    reservedAt: item.reserved, expiresAt: item.expires,
-    book: books.find((book) => book.id === item.bookId) ?? null,
-  })).filter((item) => status === 'all' || item.status === status);
+
+export function createReservation(frightonId: string, bookId: string): Promise<Reservation> {
+  return apiRequest<Reservation>('/v1/reservations', {
+    method: 'POST', body: JSON.stringify({ frightonId, bookId }),
+  });
 }
-export async function createReservation(studentId: string, bookId: string): Promise<void> {
-  createDemoReservation(studentId, bookId);
-}
-export async function cancelReservation(id: string): Promise<void> {
-  cancelDemoReservation(id);
-}
-export async function borrowReservation(id: string): Promise<void> {
-  borrowDemoReservation(id);
+
+export function cancelReservation(id: string): Promise<Reservation> {
+  return apiRequest<Reservation>(`/v1/reservations/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST', body: '{}',
+  });
 }
