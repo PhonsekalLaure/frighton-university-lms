@@ -11,7 +11,8 @@ No additional dependencies or background jobs are needed.
 Use the production tables in `schema.md`, including the SIS `profiles` table,
 then apply `supabase/migrations/003_reservations.sql`,
 `supabase/migrations/004_circulation.sql`, `supabase/migrations/005_catalog.sql`,
-and `supabase/migrations/006_reservation_api.sql` in that order on PostgreSQL 15+.
+`supabase/migrations/006_reservation_api.sql`, and
+`supabase/migrations/007_reservation_student_search.sql` in that order on PostgreSQL 15+.
 The historical migrations 001/002 use a different schema and cannot bootstrap this
 production schema. Migration 004 does not modify existing loan or student data.
 It replaces the legacy `return_book(uuid, uuid, text)` function with
