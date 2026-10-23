@@ -15,6 +15,9 @@ BEGIN
     VALUES (v_student,v_number,'Test','Student',v_student::text || '@example.test');
 
     v_book := public.save_catalog_book(NULL,'Reservation test','Author','History',2026,1,'R-1');
+    SELECT count(*) INTO v_count FROM public.search_reservation_students('Test Student',10)
+    WHERE student_number = v_number;
+    IF v_count <> 1 THEN RAISE EXCEPTION 'Reservation student search did not find the active student.'; END IF;
     v_reservation := public.create_reservation(v_number,v_book.id,v_staff);
     IF v_reservation.student_id <> v_student OR v_reservation.reserved_by <> v_staff THEN
         RAISE EXCEPTION 'Reservation identity or actor was not persisted.';
@@ -34,7 +37,9 @@ BEGIN
 
     IF has_function_privilege('anon','public.expire_reservations()','EXECUTE')
        OR has_function_privilege('authenticated','public.cancel_reservation(uuid,uuid)','EXECUTE')
-       OR NOT has_function_privilege('service_role','public.cancel_reservation(uuid,uuid)','EXECUTE') THEN
+       OR has_function_privilege('authenticated','public.search_reservation_students(text,integer)','EXECUTE')
+       OR NOT has_function_privilege('service_role','public.cancel_reservation(uuid,uuid)','EXECUTE')
+       OR NOT has_function_privilege('service_role','public.search_reservation_students(text,integer)','EXECUTE') THEN
         RAISE EXCEPTION 'Reservation API function privileges are incorrect.';
     END IF;
 END;
