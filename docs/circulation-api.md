@@ -9,8 +9,9 @@ No additional dependencies or background jobs are needed.
 ## Setup
 
 Use the production tables in `schema.md`, including the SIS `profiles` table,
-then apply `supabase/migrations/003_reservations.sql` and
-`supabase/migrations/004_circulation.sql` in that order on PostgreSQL 15+.
+then apply `supabase/migrations/003_reservations.sql`,
+`supabase/migrations/004_circulation.sql`, `supabase/migrations/005_catalog.sql`,
+and `supabase/migrations/006_reservation_api.sql` in that order on PostgreSQL 15+.
 The historical migrations 001/002 use a different schema and cannot bootstrap this
 production schema. Migration 004 does not modify existing loan or student data.
 It replaces the legacy `return_book(uuid, uuid, text)` function with
@@ -98,17 +99,15 @@ The Circulation Desk and dashboard load catalog, loans, eligibility, policies, a
 receipts from the backend. Sign-in uses the staff session APIs. Failed or empty
 backend responses never fall back to sample records.
 
-The Library Operations Reservations and Active Borrowers pages are frontend demos.
-They use separate sample data in browser memory, including simulated checkouts and
-returns. Refreshing resets these samples. They never submit circulation mutations.
-The reservation API is not mounted, and its controller, service, repository, model,
-and validator have been removed. Existing reservation SQL remains because the
-Circulation Desk loan functions depend on it; no database changes were made for
-these demo pages. Loan list/detail endpoints remain for the Circulation Desk.
+The Library Operations Reservations page uses the authenticated backend API and
+the production catalog. Reservation creation verifies local LMS account, overdue,
+and loan-limit eligibility without requiring the future SIS API. Listing releases expired holds, cancellation is
+recorded in reservation history, and Borrow Now opens the real Circulation Desk
+with the student and title pre-filled. The Active Borrowers page remains a separate
+frontend demo. Loan list/detail endpoints remain for the Circulation Desk.
 See [file-change-guide.md](file-change-guide.md) for the file-by-file explanation.
 
-Apply `supabase/migrations/005_catalog.sql` after 004 before using the connected UI.
-It adds shelf locations and catalog read/write functions. Copy totals are derived
+Migration 005 adds shelf locations and catalog read/write functions. Copy totals are derived
 from available copies plus active loans; edits lock the stock row and reject totals
 below the number checked out. Archive retains loan history.
 
