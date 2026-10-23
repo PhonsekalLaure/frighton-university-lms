@@ -1,6 +1,6 @@
 import type { ReservationRepository } from '../interfaces/reservationRepository.js';
 import type { CreateReservationInput } from '../models/reservation.js';
-import { serializeReservation } from '../models/reservation.js';
+import { serializeReservation, serializeReservationStudent } from '../models/reservation.js';
 import { reservationRepository } from '../repositories/reservationRepository.js';
 import { HttpError } from '../utils/httpError.js';
 import { LoanService } from './loanService.js';
@@ -12,6 +12,10 @@ export class ReservationService {
     private readonly repository: ReservationRepository = reservationRepository,
     private readonly verifyPatron: VerifyPatron = (studentNumber) => new LoanService(undefined, null).verifyPatron(studentNumber),
   ) {}
+
+  async searchStudents(query: string) {
+    return (await this.repository.searchStudents(query)).map(serializeReservationStudent);
+  }
 
   async list(filters: Parameters<ReservationRepository['list']>[0]) {
     const result = await this.repository.list(filters);

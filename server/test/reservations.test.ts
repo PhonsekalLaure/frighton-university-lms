@@ -8,11 +8,11 @@ import { config } from '../src/config/env.js';
 import { createReservationController } from '../src/controllers/reservationController.js';
 import type { ReservationRepository } from '../src/interfaces/reservationRepository.js';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
-import type { ReservationRecord } from '../src/models/reservation.js';
+import type { ReservationRecord, ReservationStudentRecord } from '../src/models/reservation.js';
 import { createReservationRouter } from '../src/routes/reservationRoutes.js';
 import { ReservationService } from '../src/services/reservationService.js';
 import { HttpError } from '../src/utils/httpError.js';
-import { parseCreateReservationBody, parseReservationFilters } from '../src/validators/reservationValidators.js';
+import { parseCreateReservationBody, parseReservationFilters, parseReservationStudentSearch } from '../src/validators/reservationValidators.js';
 
 const staffId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const bookId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -23,9 +23,13 @@ const reservation: ReservationRecord = {
   student_number: studentNumber, student_name: 'Mina Harker', book_id: bookId,
   book_title: 'Dracula', book_author: 'Bram Stoker', available_copies: 1,
 };
+const student: ReservationStudentRecord = {
+  student_number: studentNumber, student_name: 'Mina Harker', program: 'Literature',
+};
 
 function repository(overrides: Partial<ReservationRepository> = {}): ReservationRepository {
   return {
+    searchStudents: async () => [student],
     list: async ({ page, pageSize }) => ({ data: [reservation], total: 1, page, pageSize }),
     create: async () => reservation,
     cancel: async () => ({ ...reservation, status: 'cancelled' }),
@@ -53,11 +57,15 @@ function testApp(service: ReservationService) {
 }
 
 test('reservation validation accepts supported filters and rejects malformed input', () => {
+  assert.equal(parseReservationStudentSearch({ q: '  Mina  ' }), 'Mina');
   assert.deepEqual(parseReservationFilters({}), { status: 'all', page: 1, pageSize: 25 });
   assert.deepEqual(parseReservationFilters({ status: 'active', page: '2' }), { status: 'active', page: 2, pageSize: 25 });
   assert.deepEqual(parseCreateReservationBody({ frightonId: ' stu-2026-0001 ', bookId }), { frightonId: studentNumber, bookId });
   for (const query of [{ status: 'pending' }, { status: ['active'] }, { pageSize: '101' }]) {
     assert.throws(() => parseReservationFilters(query), HttpError);
+  }
+  for (const query of [{}, { q: 'a' }, { q: ['Mina'] }, { q: '%_' }, { q: 'x'.repeat(51) }]) {
+    assert.throws(() => parseReservationStudentSearch(query), HttpError);
   }
   for (const body of [null, [], {}, { frightonId: '../admin', bookId }, { frightonId: studentNumber, bookId: '1' }]) {
     assert.throws(() => parseCreateReservationBody(body), HttpError);
@@ -80,11 +88,17 @@ test('reservation HTTP endpoints use authenticated staff and serialize database 
   let createActor = '';
   let cancelActor = '';
   const service = new ReservationService(repository({
+    searchStudents: async (query) => { assert.equal(query, 'Mina'); return [student]; },
     create: async (input, actor) => { assert.deepEqual(input, { frightonId: studentNumber, bookId }); createActor = actor; return reservation; },
     cancel: async (id, actor) => { assert.equal(id, reservationId); cancelActor = actor; return { ...reservation, status: 'cancelled' }; },
   }), async () => ({ canBorrow: true, blockedReason: null }));
 
   await withServer(testApp(service), async (base) => {
+    const students = await fetch(base + '/reservations/students?q=Mina');
+    assert.equal(students.status, 200);
+    assert.deepEqual(await students.json(), [{ studentNumber, name: 'Mina Harker', program: 'Literature' }]);
+    assert.equal((await fetch(base + '/reservations/students?q=%25_')).status, 400);
+
     const list = await fetch(base + '/reservations?status=active&pageSize=10');
     assert.equal(list.status, 200);
     assert.equal((await list.json()).data[0].studentNumber, studentNumber);
@@ -107,6 +121,7 @@ test('reservation HTTP endpoints use authenticated staff and serialize database 
 test('application guards every reservation endpoint and rejects untrusted mutation origins', async () => {
   await withServer(createApp(), async (base) => {
     assert.equal((await fetch(base + '/api/v1/reservations')).status, 401);
+    assert.equal((await fetch(base + '/api/v1/reservations/students?q=Mina')).status, 401);
     for (const path of ['', '/' + reservationId + '/cancel']) {
       const response = await fetch(base + '/api/v1/reservations' + path, {
         method: 'POST', headers: { Origin: config.clientUrl, 'Content-Type': 'application/json' }, body: '{}',

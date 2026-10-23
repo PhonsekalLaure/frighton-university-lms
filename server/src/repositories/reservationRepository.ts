@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '../config/supabase.js';
 import type { ReservationRepository } from '../interfaces/reservationRepository.js';
-import type { ReservationRecord } from '../models/reservation.js';
+import type { ReservationRecord, ReservationStudentRecord } from '../models/reservation.js';
 import { databaseError } from '../utils/databaseError.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -17,6 +17,14 @@ export function createReservationRepository(getClient: () => SupabaseClient = ge
   };
 
   return {
+    async searchStudents(query) {
+      const { data, error } = await getClient().rpc('search_reservation_students', {
+        p_query: query, p_limit: 10,
+      });
+      if (error) throw databaseError(error);
+      return (data ?? []) as ReservationStudentRecord[];
+    },
+
     async list({ status, page, pageSize }) {
       const { error: expiryError } = await getClient().rpc('expire_reservations');
       if (expiryError) throw databaseError(expiryError);

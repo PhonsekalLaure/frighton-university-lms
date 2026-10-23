@@ -18,6 +18,16 @@ export interface CreateReservationInput {
   bookId: string;
 }
 
+export interface ReservationStudentRecord {
+  student_number: string;
+  student_name: string;
+  program: string | null;
+}
+
+export function serializeReservationStudent(record: ReservationStudentRecord) {
+  return { studentNumber: record.student_number, name: record.student_name, program: record.program };
+}
+
 export function serializeReservation(record: ReservationRecord) {
   return {
     id: record.id,
