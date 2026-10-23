@@ -10,7 +10,7 @@ type CheckStudentStatus = (studentNumber: string) => Promise<SISStudentStatus>;
 export class LoanService {
   constructor(
     private readonly repository: LoanRepository = loanRepository,
-    private readonly checkStudentStatus: CheckStudentStatus = (id) => sisService.checkStudentStatus(id),
+    private readonly checkStudentStatus: CheckStudentStatus | null = (id) => sisService.checkStudentStatus(id),
   ) {}
 
   async getPolicy() {
@@ -35,7 +35,7 @@ export class LoanService {
     }
 
     let sisStatus: SISStudentStatus | null = null;
-    if (!blockedReason) {
+    if (!blockedReason && this.checkStudentStatus) {
       try {
         sisStatus = await this.checkStudentStatus(studentNumber);
       } catch (cause) {
