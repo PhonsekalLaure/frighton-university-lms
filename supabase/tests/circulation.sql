@@ -1,4 +1,4 @@
--- Run as the database owner on an isolated database after migration 004.
+-- Run as the database owner on an isolated database after migrations 003 through 008.
 -- psql -v ON_ERROR_STOP=1 -f supabase/tests/circulation.sql
 BEGIN;
 
@@ -18,6 +18,9 @@ DECLARE
     v_count INTEGER;
 BEGIN
     SELECT * INTO v_policy FROM public.circulation_policy();
+    IF v_policy.max_active_loans <> 1 THEN
+        RAISE EXCEPTION 'The circulation policy must allow only one active loan.';
+    END IF;
     INSERT INTO public.users (users_id, first_name, last_name, email, password, role)
     VALUES
         (v_staff, 'Test', 'Staff', v_staff::text || '@example.test', 'test-profile-only', 'Admin'),
@@ -61,6 +64,20 @@ BEGIN
     IF (SELECT copies FROM public.books WHERE books_id = v_book) <> 1 THEN
         RAISE EXCEPTION 'Return restored stock more than once.';
     END IF;
+
+    -- An on-time loan also blocks checkout of a different available title.
+    -- Earlier returned loans must not prevent this new checkout.
+    v_loan := public.borrow_book(v_number, v_book, v_staff);
+    BEGIN
+        PERFORM public.borrow_book(v_number, v_other_book, v_staff);
+        RAISE EXCEPTION 'A second active loan was accepted.';
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;
+    END;
+    IF (SELECT copies FROM public.books WHERE books_id = v_other_book) <> 1
+       OR (SELECT count(*) FROM public.borrow_records WHERE student_id = v_student AND return_date IS NULL) <> 1 THEN
+        RAISE EXCEPTION 'Rejected second checkout changed stock or created a loan.';
+    END IF;
+    PERFORM public.return_book(v_loan.id, v_staff, false);
 
     -- Honor the loan's saved rate and preserve stock when collection is declined.
     v_loan := public.borrow_book(v_number, v_book, v_staff);
