@@ -1,8 +1,16 @@
-import type { FormEvent } from 'react';
-import { AlertTriangle, ArrowDownLeft, ArrowRight, ArrowUpRight, BookmarkCheck, BookOpen, CalendarDays, CheckCircle2, Command, Users } from 'lucide-react';
+import { useCallback, type FormEvent } from 'react';
+import { AlertTriangle, ArrowDownLeft, ArrowRight, ArrowUpRight, BookmarkCheck, BookOpen, CalendarDays, CheckCircle2, Command } from 'lucide-react';
 import type { BookRecord, CirculationPolicy, Loan, Patron } from '../../types/library';
 import { coverTone, dateISO, formatDate, getInitials, money } from '../../utils/library';
 import { PageHeading, PanelHeading, StatusPill } from '../../components/staff/StaffUI';
+import { SearchSelect } from '../../components/staff/SearchSelect';
+import { searchReservationStudents } from '../../services/reservations';
+
+const searchStudents = async (query: string, signal: AbortSignal) =>
+  (await searchReservationStudents(query, signal)).map((student) => ({
+    value: student.studentNumber, label: student.name,
+    detail: [student.studentNumber, student.program].filter(Boolean).join(' - '),
+  }));
 
 interface Props {
   tab: 'borrow' | 'return'; setTab: (tab: 'borrow' | 'return') => void;
@@ -10,7 +18,7 @@ interface Props {
   borrowId: string; setBorrowId: (value: string) => void;
   borrowBookId: string; setBorrowBookId: (value: string) => void;
   returnLoanId: string; setReturnLoanId: (value: string) => void;
-  patron: Patron | null; patronLoading: boolean; patronError: string;
+  patron: Patron | null; patronLoading: boolean; patronError: string; checkoutError: string;
   returnQuote: Loan | null; quoteLoading: boolean; quoteError: string; pending: boolean;
   bookById: (id: string) => BookRecord | undefined;
   onBorrow: (event: FormEvent) => void; onReturn: () => void; onReserve: () => void;
@@ -19,7 +27,18 @@ interface Props {
 export function CirculationPage(props: Props) {
   const { tab, setTab, books, activeLoans, loans, policy, borrowId, setBorrowId, borrowBookId,
     setBorrowBookId, returnLoanId, setReturnLoanId, patron, patronLoading, patronError,
-    returnQuote, quoteLoading, quoteError, pending, bookById, onBorrow, onReturn, onReserve } = props;
+    returnQuote, quoteLoading, quoteError, pending, bookById, onBorrow, onReturn, onReserve, checkoutError } = props;
+  const selectedReturnLoan = activeLoans.find((loan) => loan.id === returnLoanId);
+  const searchBooks = useCallback(async (query: string) => books
+    .filter((book) => book.active && book.available > 0 && book.title.toLowerCase().includes(query.toLowerCase()))
+    .map((book) => ({ value: book.id, label: book.title, detail: book.author + ' - ' + book.available + ' available' })), [books]);
+  const searchActiveBorrowers = useCallback(async (query: string) => activeLoans
+    .filter((loan) => (loan.student + ' ' + loan.studentId + ' ' + (bookById(loan.bookId)?.title ?? loan.bookTitle))
+      .toLowerCase().includes(query.toLowerCase()))
+    .map((loan) => ({
+      value: loan.id, label: loan.student,
+      detail: loan.studentId + ' - ' + (bookById(loan.bookId)?.title ?? loan.bookTitle) + ' - Due ' + formatDate(loan.due),
+    })), [activeLoans, bookById]);
   const chosenBook = bookById(borrowBookId);
   const quote = returnQuote?.id === returnLoanId ? returnQuote : null;
   const fine = quote?.fineAmount ?? 0;
@@ -29,13 +48,15 @@ export function CirculationPage(props: Props) {
     <div className="circulation-tabs">
       <button className={tab === 'borrow' ? 'tab-active' : ''} onClick={() => setTab('borrow')} disabled={pending}><ArrowUpRight size={16}/> Check out</button>
       <button className={tab === 'return' ? 'tab-active' : ''} onClick={() => setTab('return')} disabled={pending}><ArrowDownLeft size={16}/> Process return</button>
-      <span className="tab-hint"><Command size={14}/> Scan or type the student ID</span>
+      <span className="tab-hint"><Command size={14}/> Type a student number, name, or book title</span>
     </div>
     <div className="circulation-layout"><section className="staff-panel circulation-panel">
       {tab === 'borrow' ? <form onSubmit={onBorrow}><fieldset className="workflow-fields" disabled={pending}>
         <div className="workflow-step"><span className="step-num">01</span><div className="step-content">
-          <h2>Identify the student</h2><p>Enter the student ID to confirm their borrowing status.</p>
-          <div className="input-with-icon"><Users size={17}/><input autoFocus value={borrowId} onChange={(event) => setBorrowId(event.target.value.toUpperCase())} placeholder="Student ID" aria-label="Student ID" maxLength={50} required/></div>
+          <h2>Identify the student</h2><p>Type a student number or name, then select a suggestion to check borrowing status.</p>
+          <SearchSelect value={borrowId} selectedLabel={patron ? patron.name + ' - ' + borrowId : borrowId}
+            onSelect={setBorrowId} search={searchStudents} label="Checkout student"
+            placeholder="Type student number or name" emptyMessage="No active students found." minLength={2} required disabled={pending}/>
           {patronLoading && <p role="status" className="field-hint">Checking student eligibility...</p>}
           {patronError && <div role="alert" className="inline-warning"><AlertTriangle size={15}/>{patronError}</div>}
           {patron && <><div className="student-lookup-card">
@@ -46,29 +67,34 @@ export function CirculationPage(props: Props) {
         </div></div>
         <div className="workflow-step"><span className="step-num">02</span><div className="step-content">
           <h2>Select a book</h2><p>Only active titles with available copies can be checked out.</p>
-          <select className="workflow-select" value={borrowBookId} onChange={(event) => setBorrowBookId(event.target.value)} required>
-            <option value="">Search and choose a book</option>
-            {books.filter((book) => book.active && book.available > 0).map((book) =>
-              <option value={book.id} key={book.id}>{book.title} - {book.available} available</option>)}
-          </select>
+          <SearchSelect value={borrowBookId} selectedLabel={chosenBook?.title ?? ''}
+            onSelect={setBorrowBookId} search={searchBooks} label="Checkout book"
+            placeholder="Type book title" emptyMessage="No available books match this title." required disabled={pending}/>
           {chosenBook && <div className="chosen-book"><span className={`book-mini-cover cover-${coverTone(chosenBook.id)}`}><BookOpen size={16}/></span>
             <span><strong>{chosenBook.title}</strong><small>{chosenBook.author}</small></span><span className="availability-tag">{chosenBook.available} available</span></div>}
         </div></div>
         <div className="workflow-step"><span className="step-num">03</span><div className="step-content">
           <h2>Confirm checkout</h2><p>Loan period is {policy.loanPeriodDays} days, using Manila time.</p>
           <div className="checkout-due"><CalendarDays size={17}/><span>Due date</span><strong>{formatDate(policy.dueDate)}</strong></div>
+          {checkoutError && <p className="inline-warning" role="alert"><AlertTriangle size={15}/>{checkoutError}</p>}
           <button className="staff-primary checkout-submit" type="submit" disabled={pending || patronLoading || !patron?.canBorrow || !chosenBook?.active || chosenBook.available < 1}>
             {pending ? 'Processing checkout...' : 'Confirm checkout'} <ArrowRight size={16}/>
           </button>
         </div></div>
       </fieldset></form> : <div>
         <div className="workflow-step return-step"><span className="step-num">01</span><div className="step-content">
-          <h2>Find the active loan</h2><p>Select the book being returned by a student.</p>
-          <select className="workflow-select" value={returnLoanId} onChange={(event) => setReturnLoanId(event.target.value)} disabled={pending}>
-            <option value="">Select a student loan</option>
-            {activeLoans.map((loan) => <option value={loan.id} key={loan.id}>{loan.student} - {bookById(loan.bookId)?.title ?? loan.bookTitle} - Due {formatDate(loan.due)}</option>)}
-          </select>
-          {activeLoans.length === 0 && <p className="field-hint">There are no active loans to return.</p>}
+          <h2>Find an active borrower</h2><p>Choose a borrower and their borrowed book from the active loan records.</p>
+          <SearchSelect value={returnLoanId}
+            selectedLabel={selectedReturnLoan ? selectedReturnLoan.student + ' - ' + selectedReturnLoan.studentId : ''}
+            onSelect={setReturnLoanId} search={searchActiveBorrowers} label="Active borrower"
+            placeholder="Search borrower name or student number" minLength={0}
+            emptyMessage="No active borrowers match your search." disabled={pending}/>
+        </div></div>
+        <div className="workflow-step return-step"><span className="step-num">02</span><div className="step-content">
+          <h2>Returning book</h2><p>The book title is filled automatically when you choose an active borrower.</p>
+          <div className="input-with-icon"><BookOpen size={17}/><input aria-label="Returning book" readOnly
+            value={selectedReturnLoan ? bookById(selectedReturnLoan.bookId)?.title ?? selectedReturnLoan.bookTitle : ''}
+            placeholder="Choose an active borrower to fill the book title"/></div>          {activeLoans.length === 0 && <p className="field-hint">There are no active loans to return.</p>}
           {returnLoanId && quoteLoading && <p role="status">Calculating the current fine...</p>}
           {returnLoanId && quoteError && <div className="inline-warning" role="alert"><AlertTriangle size={15}/>{quoteError}</div>}
         </div></div>
@@ -87,7 +113,7 @@ export function CirculationPage(props: Props) {
       </div>}
     </section><aside className="circulation-aside">
       <section className="staff-panel circulation-help"><span className="eyebrow-staff">DESK GUIDE</span><h3>{tab === 'borrow' ? 'Borrowing rules' : 'Return processing'}</h3>
-        <ul>{tab === 'borrow' ? <><li>Maximum {policy.maxActiveLoans} active loans per student</li><li>Loan period is {policy.loanPeriodDays} calendar days</li><li>Overdue items must be resolved first</li><li>Only one active reservation per title</li></>
+        <ul>{tab === 'borrow' ? <><li>One active loan per student</li><li>Loan period is {policy.loanPeriodDays} calendar days</li><li>Return all borrowed books before borrowing again</li><li>Only one active reservation per title</li></>
           : <><li>The default fine is {money(policy.dailyPenaltyRate)} per overdue day</li><li>Returns use the rate saved with the loan</li><li>Fined returns receive a printable receipt</li></>}</ul>
         <div className="help-divider"/><button className="staff-text-link" onClick={onReserve} disabled={pending}><BookmarkCheck size={15}/> Create a reservation</button>
       </section>
