@@ -13,7 +13,8 @@ then apply `supabase/migrations/003_reservations.sql`,
 `supabase/migrations/004_circulation.sql`, `supabase/migrations/005_catalog.sql`,
 `supabase/migrations/006_reservation_api.sql`,
 `supabase/migrations/007_reservation_student_search.sql`, and
-`supabase/migrations/008_single_active_loan.sql` in that order on PostgreSQL 15+.
+`supabase/migrations/008_single_active_loan.sql`, then
+`supabase/migrations/009_book_images.sql` in that order on PostgreSQL 15+. Migration 009 only adds cover_image_path to books. Skip it if that column already exists. Create the private book-covers Storage bucket with a 10 MB limit using the setup in schema.md. Picture validation runs in Express; no image-specific SQL functions or constraints are required.
 The historical migrations 001/002 use a different schema and cannot bootstrap this
 production schema. Migration 004 does not modify existing loan or student data.
 It replaces the legacy `return_book(uuid, uuid, text)` function with
@@ -110,14 +111,20 @@ with the student and title pre-filled. The Active Borrowers page displays saved 
 See [file-change-guide.md](file-change-guide.md) for the file-by-file explanation.
 
 Migration 005 adds shelf locations and catalog read/write functions. Copy totals are derived
-from available copies plus active loans; edits lock the stock row and reject totals
-below the number checked out. Archive retains loan history.
+from available copies plus active loans; Express rejects totals below the number checked out and uses a guarded update so concurrent stock changes produce a readable retry message. Archive retains loan history.
 
 The catalog API uses paginated `GET /api/v1/books`, `POST /api/v1/books`,
 `PUT /api/v1/books/:id`, and `POST /api/v1/books/:id/archive`.
-Create and update bodies contain `title`, `author`, `category`, `year` (number or
-null), `total` (nonnegative integer), and `shelf`. Book responses use database UUIDs
+Create and update bodies contain `title`, `author`, `category`, `year` (required whole number from 1 to 9999), `total` (nonnegative integer), and `shelf`. Book responses use database UUIDs
 and contain those fields plus `available` and `active`.
 
 Admin staff directories use `GET /api/v1/staff`; this directory is read-only.
 Account creation and access changes are not implemented in this scope.
+
+### Book covers and validation
+
+Book creation requires `image`: a JPEG, PNG, or WebP data URL generated from a file upload, maximum decoded size 10 MB. Updates may omit `image` only when the book already has a cover. Send a new upload to replace a cover; `null` is rejected because pictures are required. Legacy books without pictures must receive an upload before a metadata edit can be saved. The book API accepts JSON up to 14 MB to accommodate base64 encoding; other routes retain their 10 KB limit. Express uploads the image to the private book-covers bucket, then saves only cover_image_path with the book metadata. Failed saves remove the new upload; successful replacements then remove the previous object. Metadata-only edits preserve the existing path. Responses include `hasImage`, and authenticated `GET /api/v1/books/:id/image` downloads the private Storage object and returns its bytes (404 when no cover exists). Catalog lists exclude the bytes.
+
+Invalid book fields return HTTP 400 with `{ "error": "Please correct the highlighted book details.", "fields": { "title": "Enter the book title." } }`. All invalid fields are collected. The form preserves entries and displays field errors and a summary. Copy-count conflicts from concurrent checkout remain HTTP 409 with a readable explanation.
+
+Book saves require nonempty category and shelf location (up to 200 characters each). The frontend offers common library categories in a dropdown and preserves existing category labels on edits. Missing publication year, category, or shelf returns a readable field error from Express.
