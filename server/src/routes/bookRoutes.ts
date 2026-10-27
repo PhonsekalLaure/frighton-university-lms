@@ -4,6 +4,7 @@ import { createBookController } from '../controllers/bookController.js';
 export function createBookRouter(controller = createBookController()) {
   const router = Router();
   router.get('/', controller.list);
+  router.get('/:id/image', controller.image);
   router.post('/', controller.create);
   router.put('/:id', controller.update);
   router.post('/:id/archive', controller.archive);

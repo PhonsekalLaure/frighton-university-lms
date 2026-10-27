@@ -8,13 +8,16 @@ export interface CatalogBook {
   total: number;
   shelf: string;
   active: boolean;
+  hasImage: boolean;
 }
 
 export interface SaveBookInput {
+  // Omitted on update preserves the existing cover; data replaces it.
+  image?: { data: string; contentType: string };
   title: string;
   author: string;
   category: string;
-  year: number | null;
+  year: number;
   total: number;
   shelf: string;
 }
