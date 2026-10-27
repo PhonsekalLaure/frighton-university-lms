@@ -93,11 +93,13 @@ All routes except `/login` sit inside a persistent AppShell (sidebar and top bar
 - **Purpose:** Browse the collection and add or maintain book records.
 - **Key UI elements:**
   - Search by title, author or category, plus category and availability filters.
-  - **Book table/cards:** title, author, category, publisher, year, copies available, and a status badge (`Available`, `Out of Stock`, `Archived`).
+  - **Book table/cards:** cover thumbnail (or a book icon when absent), title, author, category, publisher, year, copies available, and a status badge (`Available`, `Out of Stock`, `Archived`).
   - **"Add Book" button** opening a form modal:
-    - Required: title, author, number of copies.
-    - Optional: category, publisher, publication year, description.
-    - Validation: copies must be 0 or more and year must be a valid number.
+    - Required: title, author, category, publication year, shelf location, number of copies, cover image.
+    - Optional: publisher, description. Category uses a dropdown of common library subjects (such as Fiction, Literature, History, Science, Mathematics, Computer Science, and General Reference).
+    - Cover images: JPEG, PNG, or WebP files up to 10 MB, with a preview and replacement upload when editing. A saved book must always have a picture; standalone removal is rejected.
+    - Validation in both the frontend and backend: trimmed title and author are required (up to 500 characters), category and shelf location are limited to 200 characters, total copies must be a whole number from 0 to 1,000,000 and cannot be below checked-out copies, and category and shelf location are required, and publication year is required as a whole number from 1 to 9999.
+    - Image validation checks type, nonempty contents, and file size; the browser checks that the image opens and the backend verifies its file signature. Errors appear beside their fields, with a readable form summary; failed saves keep the entered details.
   - **Row actions:** Edit, Adjust Copies, Archive (sets `is_active = false`; books are never hard-deleted because loan history references them), Reserve.
   - Out-of-stock rows show a **Reserve** shortcut in place of Borrow.
 
@@ -213,3 +215,7 @@ The heart of the system, with two tabs: **Borrow** and **Return**.
 6. **Dashboard:** wire up the stat cards, the overdue banner, and the due-today and expiring lists.
 7. **Admin feature:** build Librarian Management with server-side account creation, and verify that librarians cannot reach it.
 8. **Polish:** the dark academia theme, empty states, error toasts and print-friendly receipts.
+
+### Book cover persistence
+
+Add `cover_image_path TEXT` to `public.books` using `supabase/migrations/009_book_images.sql` (skip it if the column exists) and create the private `book-covers` bucket with a 10 MB limit as described in `schema.md`. Express validates pictures, uploads their bytes to Storage, and saves only the object path with the book fields. Edits preserve the current path unless a replacement is uploaded. A failed save removes the new upload; a successful replacement then removes the old file. A simultaneous cover replacement or stock change returns a readable conflict. Archiving keeps the cover. The authenticated `GET /api/v1/books/:id/image` endpoint downloads the private object through the server-only service-role client; frontend thumbnails and previews use that endpoint. No binary image columns or new SQL image functions are used.

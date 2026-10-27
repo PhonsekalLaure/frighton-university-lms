@@ -9,7 +9,11 @@ import { config } from '../src/config/env.js';
 test('circulation allows verified active Librarians and Admins while denying students and inactive staff', async () => {
   let role = 'Librarian';
   let active = true;
-  const upstream = createServer((req, res) => {
+  const upstream = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const bytes = Buffer.concat(chunks);
+    const body = req.headers['content-type']?.includes('application/json') && bytes.length ? JSON.parse(bytes.toString()) : {};
     res.setHeader('Content-Type', 'application/json');
     if (req.url === '/auth/v1/user') {
       res.end(JSON.stringify({
@@ -25,6 +29,13 @@ test('circulation allows verified active Librarians and Admins while denying stu
         users_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', email: 'staff@example.test',
         first_name: 'Test', middle_name: null, last_name: 'Staff', role, is_active: active,
       }));
+    } else if (req.url?.startsWith('/rest/v1/books?')) {
+      res.end(JSON.stringify(req.method === 'GET'
+        ? [{ cover_image_path: 'staff-test/cover.png' }]
+        : { id: body.books_id, title: 'Title', author: 'Author', category: 'Literature', year: 1897, available: 1, shelf: 'A-1', active: true, cover_image_path: body.cover_image_path }));
+    } else if (req.url?.startsWith('/storage/v1/object/book-covers/')) {
+      if (req.method === 'POST') res.end(JSON.stringify({ Id: 'object-id', Key: req.url.slice('/storage/v1/object/'.length) }));
+      else { res.setHeader('Content-Type', 'image/png'); res.end('cover'); }
     } else if (req.url === '/rest/v1/rpc/circulation_policy') {
       res.end(JSON.stringify({
         time_zone: 'Asia/Manila', loan_period_days: 14, max_active_loans: 3,
@@ -57,9 +68,23 @@ test('circulation allows verified active Librarians and Admins while denying stu
         headers: { Authorization: 'Bearer test-staff-token' },
       });
       assert.equal(response.status, scenario.status, `${role}, active=${active}`);
+      const image = await fetch(base + '/api/v1/books/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/image', { headers: { Authorization: 'Bearer test-staff-token' } });
+      assert.equal(image.status, scenario.status);
+      if (image.ok) { assert.equal(image.headers.get('content-type'), 'image/png'); assert.equal(await image.text(), 'cover'); }
       const directory = await fetch(base + '/api/v1/staff', { headers: { Authorization: 'Bearer test-staff-token' } });
       assert.equal(directory.status, scenario.role === 'Admin' && scenario.active ? 200 : 403);
     }
+    role = 'Librarian'; active = true;
+    const headers = { Authorization: 'Bearer test-staff-token', 'Content-Type': 'application/json' };
+    const largeBook = await fetch(base + '/api/v1/books', { method: 'POST', headers,
+      body: JSON.stringify({ title: 'Title', author: 'Author', total: 1, image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jHfkAAAAASUVORK5CYII=', category: 'Literature', year: 1897, shelf: 'A-1', extra: 'x'.repeat(3 * 1024 * 1024) }) });
+    assert.equal(largeBook.status, 201, 'book JSON accepts upload-sized bodies above the previous 3 MB limit');
+    const oversized = await fetch(base + '/api/v1/books', { method: 'POST', headers,
+      body: JSON.stringify({ image: 'x'.repeat(14 * 1024 * 1024) }) });
+    assert.equal(oversized.status, 413);
+    assert.match((await oversized.json()).error, /up to 10 MB/);
+    const unauthenticated = await fetch(base + '/api/v1/books/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/image');
+    assert.equal(unauthenticated.status, 401);
   } finally {
     Object.assign(config.supabase, original);
     await Promise.all([server, upstream].map((running) =>

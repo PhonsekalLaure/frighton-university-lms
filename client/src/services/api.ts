@@ -1,9 +1,10 @@
 export class ApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
+  readonly fields: Record<string, string>;
+  constructor(status: number, message: string, fields: Record<string, string> = {}) { super(message); this.status = status; this.fields = fields; }
 }
 
-const apiBase = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+export const apiBase = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 let refreshing: Promise<void> | null = null;
 
 async function send(path: string, options: RequestInit): Promise<Response> {
@@ -15,7 +16,7 @@ async function send(path: string, options: RequestInit): Promise<Response> {
 
 async function failure(response: Response): Promise<ApiError> {
   const body = await response.json().catch(() => ({}));
-  return new ApiError(response.status, typeof body.error === 'string' ? body.error : 'Unable to complete the request.');
+  return new ApiError(response.status, typeof body.error === 'string' ? body.error : 'Unable to complete the request.', body.fields && typeof body.fields === 'object' ? body.fields : {});
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {

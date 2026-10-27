@@ -27,7 +27,7 @@ export async function getLoans(signal?: AbortSignal): Promise<Loan[]> {
 export const getPolicy = (signal?: AbortSignal) => apiRequest<CirculationPolicy>('/v1/loans/policy', { signal });
 export const verifyPatron = (id: string, signal?: AbortSignal) =>
   apiRequest<Patron>('/v1/loans/verify-patron/' + encodeURIComponent(id.trim().toUpperCase()), { signal });
-export type BookInput = Pick<BookRecord, 'title' | 'author' | 'category' | 'year' | 'total' | 'shelf'>;
+export type BookInput = Pick<BookRecord, 'title' | 'author' | 'category' | 'total' | 'shelf'> & { year: number; image?: string };
 export const saveBook = (id: string | null, book: BookInput) => apiRequest<BookRecord>(
   id ? '/v1/books/' + encodeURIComponent(id) : '/v1/books',
   { method: id ? 'PUT' : 'POST', body: JSON.stringify(book) },

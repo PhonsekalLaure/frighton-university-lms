@@ -4,3 +4,10 @@ export class HttpError extends Error {
     this.name = 'HttpError';
   }
 }
+
+export class ValidationError extends HttpError {
+  constructor(readonly fields: Record<string, string>) {
+    super(400, 'Please correct the highlighted book details.');
+    this.name = 'ValidationError';
+  }
+}

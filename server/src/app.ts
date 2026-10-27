@@ -27,11 +27,11 @@ export const createApp = (): Express => {
   });
   app.use(cors({ origin: config.clientUrl, credentials: true }));
   app.use(protectCookieRequests);
+  app.use('/api/v1/books', requireLibrarian, express.json({ limit: '14mb' }), bookRouter);
   app.use(express.json({ limit: '10kb' }));
 
   app.use('/api/health', healthRouter);
   app.use('/api/auth', authRouter);
-  app.use('/api/v1/books', requireLibrarian, bookRouter);
   app.use('/api/v1/loans', requireLibrarian, loanRouter);
   app.use('/api/v1/reservations', requireLibrarian, reservationRouter);
   app.use('/api/v1/staff', requireLibrarian, staffRouter);

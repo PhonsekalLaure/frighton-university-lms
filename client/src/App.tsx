@@ -5,6 +5,8 @@ import { formatDate, getInitials, money } from './utils/library';
 import { useAuth } from './hooks/useAuth';
 import { usePatronLookup } from './hooks/usePatronLookup';
 import { useRemoteData } from './hooks/useRemoteData';
+import { BookForm } from './components/staff/BookForm';
+import type { BookInput } from './services/library';
 import { getAllPages } from './services/api';
 import { archiveBook, borrowBook, getBooks, getLoan, getLoans, getPolicy, returnBook, saveBook as persistBook, toLoan } from './services/library';
 import { cancelReservation, createReservation, getReservations } from './services/reservations';
@@ -24,7 +26,6 @@ import './staff.css';
 type ConfirmationRequest = { title: string; message: string; confirmLabel: string; onConfirm: () => void; danger?: boolean };
 const loadReservations = (signal: AbortSignal) => getReservations('all', signal);
 const loadStaff = (signal: AbortSignal) => getAllPages<Staff>('/v1/staff', signal);
-const emptyBookForm = { title: '', author: '', category: '', year: '', total: '1', shelf: '' };
 
 const pageLabels: Record<Page, string> = {
   dashboard: 'Dashboard',
@@ -89,7 +90,6 @@ export default function App() {
   const [reservationFilter, setReservationFilter] = useState('All statuses');
   const [bookStatusFilter, setBookStatusFilter] = useState('All books');
   const [loanFilter, setLoanFilter] = useState('All active');
-  const [bookForm, setBookForm] = useState(emptyBookForm);
   const [reservationForm, setReservationForm] = useState({ studentId: '', bookId: '' });
   const borrowPatron = usePatronLookup(borrowId, Boolean(librarySessionId) && page === 'circulation', revision);
   const quickPatron = usePatronLookup(lookup, Boolean(librarySessionId), revision);
@@ -163,19 +163,17 @@ export default function App() {
   const startBookForm = (book?: BookRecord) => {
     if (mutationLock.current) return;
     setEditingBook(book ?? null);
-    setBookForm(book ? { title: book.title, author: book.author, category: book.category, year: book.year?.toString() ?? '', total: String(book.total), shelf: book.shelf } : emptyBookForm);
     setOperationError(''); setModal('book');
   };
-  const saveBook = (event: FormEvent) => {
-    event.preventDefault();
-    void runMutation(async () => {
-      await persistBook(editingBook?.id ?? null, {
-        title: bookForm.title, author: bookForm.author, category: bookForm.category,
-        year: bookForm.year === '' ? null : Number(bookForm.year), total: Number(bookForm.total), shelf: bookForm.shelf,
-      });
+  const saveBook = async (input: BookInput) => {
+    if (mutationLock.current) return;
+    mutationLock.current = true; setPending(true); setOperationError(''); setNotice('');
+    try {
+      await persistBook(editingBook?.id ?? null, input);
       setModal(null); flash(editingBook ? 'Book record updated.' : 'Book added to the catalog.');
+      setRevision((value) => value + 1);
       await catalogRecords.reload();
-    });
+    } finally { mutationLock.current = false; setPending(false); }
   };
   const processBorrow = (event: FormEvent) => {
     event.preventDefault();
@@ -311,7 +309,7 @@ export default function App() {
       <footer className="staff-footer"><span>FRIGHTON UNIVERSITY LIBRARY</span><span>Staff circulation console</span></footer>
     </main>
     {notice && <div className="staff-toast" role="status"><CheckCircle2 size={17}/>{notice}<button onClick={() => setNotice('')} aria-label="Dismiss notice"><X size={15}/></button></div>}
-    {modal === 'book' && <Modal title={editingBook ? 'Edit book record' : 'Add a book'} subtitle="Maintain the collection catalog." onClose={closeModal}><form className="staff-form" onSubmit={saveBook}>{operationError && <p role="alert" className="inline-warning">{operationError}</p>}<fieldset className="workflow-fields" disabled={pending}><div className="form-grid"><Field label="Book title"><input required value={bookForm.title} onChange={(event) => setBookForm({ ...bookForm, title: event.target.value })} placeholder="Enter title"/></Field><Field label="Author"><input required value={bookForm.author} onChange={(event) => setBookForm({ ...bookForm, author: event.target.value })} placeholder="Author name"/></Field><Field label="Category"><input value={bookForm.category} onChange={(event) => setBookForm({ ...bookForm, category: event.target.value })} placeholder="e.g. History"/></Field><Field label="Publication year"><input type="number" min="1" max="9999" step="1" value={bookForm.year} onChange={(event) => setBookForm({ ...bookForm, year: event.target.value })} placeholder="2026"/></Field><Field label="Total copies"><input type="number" min="0" max="1000000" step="1" required value={bookForm.total} onChange={(event) => setBookForm({ ...bookForm, total: event.target.value })}/></Field><Field label="Shelf location"><input value={bookForm.shelf} onChange={(event) => setBookForm({ ...bookForm, shelf: event.target.value })} placeholder="Humanities  -  823.9"/></Field></div><FormActions onCancel={closeModal} pending={pending} submit={editingBook ? 'Save changes' : 'Add to catalog'}/></fieldset></form></Modal>}
+    {modal === 'book' && <Modal title={editingBook ? 'Edit book record' : 'Add a book'} subtitle="Maintain the collection catalog." onClose={closeModal}><BookForm book={editingBook} pending={pending} onSave={saveBook} onCancel={closeModal}/></Modal>}
     {modal === 'reservation' && <Modal title="New reservation" subtitle="Hold a catalog title for an eligible student for three days." onClose={closeModal}><form className="staff-form" onSubmit={saveReservation}>{operationError && <p role="alert" className="inline-warning">{operationError}</p>}<fieldset className="workflow-fields" disabled={pending}><div className="staff-field"><span>Student</span><ReservationStudentSearch onSelect={(studentId) => setReservationForm((current) => ({ ...current, studentId }))}/></div><Field label="Book"><select required value={reservationForm.bookId} onChange={(event) => setReservationForm({ ...reservationForm, bookId: event.target.value })}><option value="">Choose a title</option>{books.filter((book) => book.active).map((book) => <option value={book.id} key={book.id}>{book.title} {book.available ? ` -  ${book.available} available` : ' -  Out of stock'}</option>)}</select></Field><FormActions onCancel={closeModal} pending={pending} submit="Create reservation"/></fieldset></form></Modal>}
 
     {confirmation && <Modal title={confirmation.title} subtitle={confirmation.message} onClose={() => setConfirmation(null)}><div className="form-actions confirmation-actions"><button type="button" className="staff-outline" onClick={() => setConfirmation(null)}>Go back</button><button type="button" className={confirmation.danger ? 'staff-primary staff-danger' : 'staff-primary'} onClick={() => { const pending = confirmation; setConfirmation(null); pending.onConfirm(); }}>{confirmation.confirmLabel}</button></div></Modal>}

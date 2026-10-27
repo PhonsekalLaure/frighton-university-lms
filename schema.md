@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- ============================================================
 -- BOOKS
 -- ============================================================
-CREATE TABLE IF NOT EXISTS public.books (
+CREATE TABLE public.books (
     books_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title            TEXT NOT NULL,
     author           TEXT NOT NULL,
@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS public.books (
     publication_year INT,
     copies           INT NOT NULL DEFAULT 1 CHECK (copies >= 0),
     description      TEXT,
+    cover_image_path TEXT, -- Object path in the private book-covers bucket
     is_active        BOOLEAN NOT NULL DEFAULT true,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -395,11 +396,58 @@ VALUES
 ON CONFLICT (email) DO NOTHING;
 
 -- 2. Seed Books
-INSERT INTO public.books (title, author, category, publisher, publication_year, copies, description)
+-- Upload the corresponding cover files to book-covers at these paths first.
+INSERT INTO public.books (title, author, category, publisher, publication_year, copies, description, cover_image_path)
 VALUES
-    ('Frankenstein; or, The Modern Prometheus', 'Mary Shelley', 'Gothic Literature', 'Lackington, Hughes, Harding, Mavor, & Jones', 1818, 5, 'Classic tale of scientific creation and consequence.'),
-    ('Dracula', 'Bram Stoker', 'Classic Horror', 'Archibald Constable and Company', 1897, 4, 'Epistolary Gothic horror novel.'),
-    ('Introduction to Algorithms', 'Thomas H. Cormen et al.', 'Computer Science', 'MIT Press', 2022, 8, 'Comprehensive algorithms textbook.'),
-    ('Clean Code', 'Robert C. Martin', 'Software Engineering', 'Prentice Hall', 2008, 6, 'A handbook of agile software craftsmanship.')
+    ('Frankenstein; or, The Modern Prometheus', 'Mary Shelley', 'Gothic Literature', 'Lackington, Hughes, Harding, Mavor, & Jones', 1818, 5, 'Classic tale of scientific creation and consequence.', 'seed/frankenstein.jpg'),
+    ('Dracula', 'Bram Stoker', 'Classic Horror', 'Archibald Constable and Company', 1897, 4, 'Epistolary Gothic horror novel.', 'seed/dracula.jpg'),
+    ('Introduction to Algorithms', 'Thomas H. Cormen et al.', 'Computer Science', 'MIT Press', 2022, 8, 'Comprehensive algorithms textbook.', 'seed/introduction-to-algorithms.jpg'),
+    ('Clean Code', 'Robert C. Martin', 'Software Engineering', 'Prentice Hall', 2008, 6, 'A handbook of agile software craftsmanship.', 'seed/clean-code.jpg')
 ON CONFLICT DO NOTHING;
 ```
+
+## 6. Book Pictures with Supabase Storage
+
+Every book requires an uploaded picture. The `book-covers` bucket stores the image file; `books.cover_image_path` stores only its object path, such as `<book-id>/<image-id>.jpg`. File contents and MIME types are managed by Storage rather than columns on the book record. Required-picture, JPEG/PNG/WebP format, file-signature, and 10 MB size validation belong to Express and the frontend. Publication year (a whole number from 1 to 9999), category, and shelf location are also required on every save. Category uses a dropdown of common library subjects; existing category labels are preserved when editing older records. These are application validations; no new SQL checks or category tables are needed.
+
+### Bucket setup
+
+Create a private bucket named `book-covers` in Supabase Storage, or run this once:
+
+```sql
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('book-covers', 'book-covers', false, 10485760);
+```
+
+Express authenticates library staff and uses its server-only Supabase service-role client for uploads and downloads. The frontend receives the image through an authenticated Express endpoint or a temporary signed URL. Store the object path in the books table; signed URLs expire and should not be stored there. No browser write policies or additional image SQL functions are needed for this server-mediated flow.
+
+See the official [bucket creation guide](https://supabase.com/docs/guides/storage/buckets/creating-buckets) and [private bucket access documentation](https://supabase.com/docs/guides/storage/buckets/fundamentals).
+
+If the bucket already exists, set its image limit to 10 MB (10,485,760 bytes):
+
+```sql
+UPDATE storage.buckets
+SET file_size_limit = 10485760
+WHERE id = 'book-covers';
+```
+
+### Existing books table
+
+Add just the image-path column, once:
+
+```sql
+ALTER TABLE public.books
+    ADD COLUMN cover_image_path TEXT;
+```
+
+Skip either setup statement if its bucket or column already exists. Use the book CREATE TABLE definition only when creating a new books table. Existing book records can receive pictures through the edit form. The column allows NULL for older records; Express requires an uploaded picture before creating a book or saving a book that does not have one.
+
+### Express save flow
+
+1. Validate the staff account, book fields, and required picture.
+2. Upload the picture to `book-covers` with a unique object path.
+3. Save that path together with the book fields. If saving fails, remove the newly uploaded file.
+4. On edit, preserve the current path unless a replacement is uploaded. Save the replacement path successfully before removing the previous file. Reject standalone picture removal.
+5. Keep the cover file when archiving a book.
+
+**Implementation status:** Express uploads pictures to the private `book-covers` bucket and saves only `cover_image_path` on the book record. It downloads covers through the existing authenticated image endpoint. The bucket and column must exist in your Supabase project; this code change does not create them remotely. Earlier `cover_image` and `cover_image_type` columns are no longer read or written. Existing binary pictures must be re-uploaded through the edit form (or migrated into Storage) before retiring those old columns; existing data is not deleted.

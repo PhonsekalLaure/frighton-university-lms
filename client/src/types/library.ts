@@ -1,6 +1,6 @@
 export type Page = 'dashboard' | 'books' | 'circulation' | 'borrowed' | 'reservations' | 'librarians';
 export type StaffRole = 'Librarian' | 'Admin';
-export type BookRecord = { id: string; title: string; author: string; category: string; year: number | null; available: number; total: number; shelf: string; active: boolean };
+export type BookRecord = { hasImage?: boolean; id: string; title: string; author: string; category: string; year: number | null; available: number; total: number; shelf: string; active: boolean };
 export type Loan = {
   id: string; studentId: string; student: string; bookId: string; bookTitle: string; bookAuthor: string;
   borrowed: string; due: string; returned?: string; finePaid?: number; receipt?: string;
