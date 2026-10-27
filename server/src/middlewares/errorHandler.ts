@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthError } from '../services/authService.js';
-import { HttpError } from '../utils/httpError.js';
+import { HttpError, ValidationError } from '../utils/httpError.js';
 
 export const errorHandler = (
   err: Error & { status?: number; code?: string },
@@ -8,6 +8,10 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
+  if (err instanceof ValidationError) {
+    res.status(400).json({ error: err.message, fields: err.fields });
+    return;
+  }
   if (err instanceof AuthError || err instanceof HttpError) {
     if (err.status >= 500) {
       const cause = err.cause && typeof err.cause === 'object' && 'code' in err.cause ? err.cause : undefined;
@@ -17,7 +21,7 @@ export const errorHandler = (
     return;
   }
   if (err.status === 413) {
-    res.status(413).json({ error: 'Request body is too large.' });
+    res.status(413).json({ error: _req.originalUrl.startsWith('/api/v1/books') ? 'The upload is too large. Choose a cover image up to 10 MB.' : 'Request body is too large.' });
     return;
   }
   if (err instanceof SyntaxError && err.status === 400) {
