@@ -13,6 +13,7 @@ const searchStudents = async (query: string, signal: AbortSignal) =>
   }));
 
 interface Props {
+  reservedBookIds: string[];
   tab: 'borrow' | 'return'; setTab: (tab: 'borrow' | 'return') => void;
   books: BookRecord[]; activeLoans: Loan[]; loans: Loan[]; policy: CirculationPolicy;
   borrowId: string; setBorrowId: (value: string) => void;
@@ -25,13 +26,13 @@ interface Props {
 }
 
 export function CirculationPage(props: Props) {
-  const { tab, setTab, books, activeLoans, loans, policy, borrowId, setBorrowId, borrowBookId,
+  const { reservedBookIds, tab, setTab, books, activeLoans, loans, policy, borrowId, setBorrowId, borrowBookId,
     setBorrowBookId, returnLoanId, setReturnLoanId, patron, patronLoading, patronError,
     returnQuote, quoteLoading, quoteError, pending, bookById, onBorrow, onReturn, onReserve, checkoutError } = props;
   const selectedReturnLoan = activeLoans.find((loan) => loan.id === returnLoanId);
   const searchBooks = useCallback(async (query: string) => books
-    .filter((book) => book.active && book.available > 0 && book.title.toLowerCase().includes(query.toLowerCase()))
-    .map((book) => ({ value: book.id, label: book.title, detail: book.author + ' - ' + book.available + ' available' })), [books]);
+    .filter((book) => book.active && (book.available > 0 || reservedBookIds.includes(book.id)) && book.title.toLowerCase().includes(query.toLowerCase()))
+    .map((book) => ({ value: book.id, label: book.title, detail: book.author + ' - ' + book.available + ' available' })), [books,reservedBookIds]);
   const searchActiveBorrowers = useCallback(async (query: string) => activeLoans
     .filter((loan) => (loan.student + ' ' + loan.studentId + ' ' + (bookById(loan.bookId)?.title ?? loan.bookTitle))
       .toLowerCase().includes(query.toLowerCase()))
@@ -77,7 +78,7 @@ export function CirculationPage(props: Props) {
           <h2>Confirm checkout</h2><p>Loan period is {policy.loanPeriodDays} days, using Manila time.</p>
           <div className="checkout-due"><CalendarDays size={17}/><span>Due date</span><strong>{formatDate(policy.dueDate)}</strong></div>
           {checkoutError && <p className="inline-warning" role="alert"><AlertTriangle size={15}/>{checkoutError}</p>}
-          <button className="staff-primary checkout-submit" type="submit" disabled={pending || patronLoading || !patron?.canBorrow || !chosenBook?.active || chosenBook.available < 1}>
+          <button className="staff-primary checkout-submit" type="submit" disabled={pending || patronLoading || !patron?.canBorrow || !chosenBook?.active || (chosenBook.available < 1 && !reservedBookIds.includes(chosenBook.id))}>
             {pending ? 'Processing checkout...' : 'Confirm checkout'} <ArrowRight size={16}/>
           </button>
         </div></div>

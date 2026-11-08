@@ -1,7 +1,8 @@
 import { config } from '../config/env.js';
-
+import { HttpError } from '../utils/httpError.js';
+import type { DebtSnapshot } from './libraryService.js';
 export interface SISStudentStatus {
-  frightonId: string;
+  studentNumber: string;
   name: string;
   email: string;
   role: string;
@@ -10,70 +11,52 @@ export interface SISStudentStatus {
   canBorrow: boolean;
   activeHolds: unknown[];
 }
-
-export const sisService = {
-  /**
-   * Queries the Frighton University SIS to verify if student is active & eligible to borrow
-   */
-  async checkStudentStatus(frightonId: string): Promise<SISStudentStatus> {
-    if (!config.sis.apiKey) throw new Error('SIS_API_KEY is not configured.');
-    const url = `${config.sis.apiUrl}/api/v1/integration/students/${encodeURIComponent(frightonId)}/status`;
-    const response = await fetch(url, {
+async function request(path: string, method = 'GET', body?: unknown) {
+  if (!config.sis.apiKey) throw new HttpError(503, 'SIS integration is not configured.');
+  try {
+    const response = await fetch(config.sis.apiUrl + path, {
+      method,
       signal: AbortSignal.timeout(5000),
-      headers: {
-        'x-lms-api-key': config.sis.apiKey,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'x-lms-api-key': config.sis.apiKey, 'Content-Type': 'application/json' },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: 'SIS Service Request Failed' }));
-      throw new Error(err.error || `SIS returned status ${response.status}`);
-    }
-
-    return response.json() as Promise<SISStudentStatus>;
+    if (!response.ok) throw new Error('SIS request failed.');
+    return await response.json();
+  } catch {
+    throw new HttpError(503, 'SIS is temporarily unavailable. Please try again.');
+  }
+}
+export const sisService = {
+  async checkStudentStatus(number: string): Promise<SISStudentStatus> {
+    const result = await request('/api/v1/integration/students/' + encodeURIComponent(number) + '/status');
+    if (
+      !result ||
+      result.studentNumber !== number ||
+      typeof result.canBorrow !== 'boolean' ||
+      !Array.isArray(result.activeHolds)
+    )
+      throw new HttpError(503, 'SIS returned an invalid eligibility response.');
+    return result;
   },
-
-  /**
-   * Places an academic hold in SIS when student materials are overdue or damaged
-   */
-  async placeHold(frightonId: string, reason: string, amount?: number) {
-    const url = `${config.sis.apiUrl}/api/v1/integration/holds`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'x-lms-api-key': config.sis.apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ frightonId, reason, amount }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: 'Failed to place hold in SIS' }));
-      throw new Error(err.error || 'Failed to place hold in SIS');
-    }
-
-    return response.json();
+  placeHold(number: string, _reason: string, _amount?: number) {
+    return request('/api/v1/integration/holds', 'POST', { studentNumber: number });
   },
-
-  /**
-   * Resolves a previously placed academic hold in SIS
-   */
-  async resolveHold(holdId: string) {
-    const url = `${config.sis.apiUrl}/api/v1/integration/holds/${holdId}/resolve`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'x-lms-api-key': config.sis.apiKey,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: 'Failed to resolve hold in SIS' }));
-      throw new Error(err.error || 'Failed to resolve hold in SIS');
-    }
-
-    return response.json();
+  resolveHold(id: string) {
+    return request('/api/v1/integration/holds/' + encodeURIComponent(id) + '/resolve', 'POST', {});
+  },
+  async syncDebt(snapshot: DebtSnapshot) {
+    const result = await request(
+      '/api/v1/integration/library-debt/' + encodeURIComponent(snapshot.studentNumber),
+      'PUT',
+      snapshot,
+    );
+    if (
+      !result ||
+      typeof result.applied !== 'boolean' ||
+      !Number.isSafeInteger(result.version) ||
+      result.version < snapshot.version
+    )
+      throw new HttpError(503, 'SIS did not confirm library debt synchronization.');
+    return result;
   },
 };

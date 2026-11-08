@@ -47,6 +47,7 @@ async function withStore(run: (state: ReturnType<typeof stateFor>, repository: R
     const toCatalog = (row: Row) => ({ id: row.books_id, title: row.title, author: row.author, category: row.category,
       year: row.publication_year, available: row.copies, total: row.copies + (row.books_id === bookId ? 1 : 0), shelf: row.shelf_location, active: row.is_active });
     if (url.pathname === '/rest/v1/catalog_books') {
+      if (state.catalogReadFailsAfterSave && state.requests.some(r=>r.method==='PATCH')) { res.statusCode=400;res.end(JSON.stringify({message:'Refresh unavailable'}));return; }
       const rows = [...state.rows.values()].filter(row => !url.searchParams.has('id') || url.searchParams.get('id') === 'eq.' + row.books_id).map(toCatalog);
       res.setHeader('Content-Range', '0-' + Math.max(0, rows.length - 1) + '/' + rows.length); res.end(JSON.stringify(rows)); return;
     }
@@ -60,6 +61,7 @@ async function withStore(run: (state: ReturnType<typeof stateFor>, repository: R
       const current = req.method === 'POST' ? { is_active: true } : filtered[0];
       const row = { ...current, ...body } as Row;
       state.rows.set(row.books_id, row);
+      if(state.commitResponseLost){res.statusCode=500;res.end(JSON.stringify({code:'08007',message:'Commit outcome unknown'}));return;}
       const result = { ...toCatalog(row), cover_image_path: row.cover_image_path };
       res.end(JSON.stringify(req.method === 'POST' ? result : [result])); return;
     }
@@ -75,7 +77,7 @@ function stateFor() {
     rows: new Map<string, Row>([[bookId, { books_id: bookId, title: 'Dracula', author: 'Bram Stoker', category: 'Literature', publication_year: 1897, copies: 1, shelf_location: 'A-1', is_active: true, cover_image_path: originalPath }]]),
     files: new Map([[originalPath, { bytes: Buffer.from('image-bytes'), type: 'image/png' }]]),
     requests: [] as Array<{ method: string; path: string; body: Record<string, unknown>; bytes: Buffer; contentType: string | undefined }>,
-    saveFailed: false, stockConflict: false, coverConflict: false, bucketMissing: false, cleanupFailed: false,
+    saveFailed: false, stockConflict: false, coverConflict: false, bucketMissing: false, cleanupFailed: false, catalogReadFailsAfterSave:false,commitResponseLost:false,
   };
 }
 
@@ -117,6 +119,23 @@ test('replacing a cover saves the new path before deleting the old file', async 
     assert.equal(guard.get('copies'), 'eq.1'); assert.equal(guard.get('cover_image_path'), 'eq.' + originalPath);
     assert.equal((await repository.image(bookId)).contentType, 'image/jpeg');
   });
+});
+test('a post-save availability refresh failure preserves the committed cover',async()=>{
+ await withStore(async(state,repository)=>{
+  state.catalogReadFailsAfterSave=true;
+  const result=await repository.save(bookId,{...input,image});
+  assert.equal(result.total,4);const newPath=state.rows.get(bookId)!.cover_image_path!;
+  assert.notEqual(newPath,originalPath);assert.ok(state.files.has(newPath));
+ });
+});
+test('an uncertain book save never deletes a cover that may already be committed',async()=>{
+ await withStore(async(state,repository)=>{
+  state.commitResponseLost=true;
+  await assert.rejects(repository.save(bookId,{...input,image}),{status:503});
+  const newPath=state.rows.get(bookId)!.cover_image_path!;
+  assert.notEqual(newPath,originalPath);assert.ok(state.files.has(newPath));
+  assert.equal(state.requests.filter(r=>r.method==='PATCH').length,1);
+ });
 });
 test('failed create/edit and conflicting stock or cover changes clean up the new upload and preserve the original', async () => {
   await withStore(async (state, repository) => {

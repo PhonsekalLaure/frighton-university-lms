@@ -8,7 +8,7 @@ export function createLoanController(service = new LoanService()) {
       res.json(await service.getPolicy());
     }),
     verifyPatron: asyncHandler(async (req, res) => {
-      res.json(await service.verifyPatron(parseStudentNumber(req.params.frightonId)));
+      res.json(await service.verifyPatron(parseStudentNumber(req.params.studentNumber)));
     }),
     availableBooks: asyncHandler(async (req, res) => {
       res.json(await service.listAvailableBooks(parsePagination(req.query)));
@@ -31,7 +31,7 @@ export function createLoanController(service = new LoanService()) {
     }),
     reportOverdue: asyncHandler(async (req, res) => {
       const holdResult = await service.reportOverdue(parseReportOverdueBody(req.body));
-      res.json({ message: 'Overdue hold successfully registered with SIS', holdResult });
+      res.json({ message: 'Library debt synchronization completed', holdResult });
     }),
   };
 }

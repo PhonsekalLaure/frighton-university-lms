@@ -12,7 +12,7 @@ export interface LoanFilters extends Pagination {
 }
 
 export interface BorrowInput {
-  frightonId: string;
+  studentNumber: string;
   bookId: string;
 }
 
@@ -21,7 +21,7 @@ export interface ReturnInput {
 }
 
 export interface ReportOverdueInput {
-  frightonId: string;
+  studentNumber: string;
   bookTitle: string;
   fineAmount: number;
 }

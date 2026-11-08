@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "library:worker": "node dist/scripts/libraryWorker.js",
+    "library:worker:dev": "tsx src/scripts/libraryWorker.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",

@@ -60,14 +60,14 @@ test('reservation validation accepts supported filters and rejects malformed inp
   assert.equal(parseReservationStudentSearch({ q: '  Mina  ' }), 'Mina');
   assert.deepEqual(parseReservationFilters({}), { status: 'all', page: 1, pageSize: 25 });
   assert.deepEqual(parseReservationFilters({ status: 'active', page: '2' }), { status: 'active', page: 2, pageSize: 25 });
-  assert.deepEqual(parseCreateReservationBody({ frightonId: ' stu-2026-0001 ', bookId }), { frightonId: studentNumber, bookId });
+  assert.deepEqual(parseCreateReservationBody({ studentNumber: ' stu-2026-0001 ', bookId }), { studentNumber: studentNumber, bookId });
   for (const query of [{ status: 'pending' }, { status: ['active'] }, { pageSize: '101' }]) {
     assert.throws(() => parseReservationFilters(query), HttpError);
   }
   for (const query of [{}, { q: 'a' }, { q: ['Mina'] }, { q: '%_' }, { q: 'x'.repeat(51) }]) {
     assert.throws(() => parseReservationStudentSearch(query), HttpError);
   }
-  for (const body of [null, [], {}, { frightonId: '../admin', bookId }, { frightonId: studentNumber, bookId: '1' }]) {
+  for (const body of [null, [], {}, { studentNumber: '../admin', bookId }, { studentNumber: studentNumber, bookId: '1' }]) {
     assert.throws(() => parseCreateReservationBody(body), HttpError);
   }
 });
@@ -77,11 +77,11 @@ test('reservation creation fails closed when patron eligibility is blocked or un
   const blocked = new ReservationService(repository({ create: async () => { created = true; return reservation; } }), async () => ({
     canBorrow: false, blockedReason: 'This student has overdue items.',
   }));
-  await assert.rejects(blocked.create({ frightonId: studentNumber, bookId }, staffId), { status: 403 });
+  await assert.rejects(blocked.create({ studentNumber: studentNumber, bookId }, staffId), { status: 403 });
   assert.equal(created, false);
 
   const unavailable = new ReservationService(repository(), async () => { throw new HttpError(502, 'Student standing could not be verified.'); });
-  await assert.rejects(unavailable.create({ frightonId: studentNumber, bookId }, staffId), { status: 502 });
+  await assert.rejects(unavailable.create({ studentNumber: studentNumber, bookId }, staffId), { status: 502 });
 });
 
 test('reservation HTTP endpoints use authenticated staff and serialize database records', async () => {
@@ -89,7 +89,7 @@ test('reservation HTTP endpoints use authenticated staff and serialize database 
   let cancelActor = '';
   const service = new ReservationService(repository({
     searchStudents: async (query) => { assert.equal(query, 'Mina'); return [student]; },
-    create: async (input, actor) => { assert.deepEqual(input, { frightonId: studentNumber, bookId }); createActor = actor; return reservation; },
+    create: async (input, actor) => { assert.deepEqual(input, { studentNumber: studentNumber, bookId }); createActor = actor; return reservation; },
     cancel: async (id, actor) => { assert.equal(id, reservationId); cancelActor = actor; return { ...reservation, status: 'cancelled' }; },
   }), async () => ({ canBorrow: true, blockedReason: null }));
 
@@ -105,7 +105,7 @@ test('reservation HTTP endpoints use authenticated staff and serialize database 
 
     const created = await fetch(base + '/reservations', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ frightonId: studentNumber, bookId, reservedBy: reservationId }),
+      body: JSON.stringify({ studentNumber: studentNumber, bookId, reservedBy: reservationId }),
     });
     assert.equal(created.status, 201);
     assert.equal((await created.json()).book.id, bookId);

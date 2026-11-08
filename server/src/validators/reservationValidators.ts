@@ -28,7 +28,7 @@ export function parseCreateReservationBody(value: unknown): CreateReservationInp
   }
   const input = value as Record<string, unknown>;
   return {
-    frightonId: parseStudentNumber(input.frightonId),
+    studentNumber: parseStudentNumber(input.studentNumber),
     bookId: parseUuid(input.bookId, 'bookId'),
   };
 }

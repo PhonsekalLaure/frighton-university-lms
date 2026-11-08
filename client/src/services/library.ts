@@ -34,9 +34,9 @@ export const saveBook = (id: string | null, book: BookInput) => apiRequest<BookR
 );
 export const archiveBook = (id: string) =>
   apiRequest<BookRecord>('/v1/books/' + encodeURIComponent(id) + '/archive', { method: 'POST', body: '{}' });
-export async function borrowBook(frightonId: string, bookId: string): Promise<{ loan: LoanResponse }> {
+export async function borrowBook(studentNumber: string, bookId: string): Promise<{ loan: LoanResponse }> {
   const response = await apiRequest<{ loan: LoanResponse }>('/v1/loans/borrow', {
-    method: 'POST', body: JSON.stringify({ frightonId, bookId }),
+    method: 'POST', body: JSON.stringify({ studentNumber, bookId }),
   });
   if (!response?.loan?.id || response.loan.bookId !== bookId || !response.loan.dueDate || !response.loan.borrowedAt) {
     throw new Error('Checkout could not be confirmed. Check active borrowers before trying again.');

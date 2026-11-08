@@ -16,4 +16,5 @@ export const config = {
     apiUrl: process.env.SIS_API_URL || 'http://localhost:5000',
     apiKey: process.env.SIS_API_KEY || '',
   },
+  service: { apiKey: process.env.SIS_SERVICE_API_KEY || '' },
 };

@@ -14,7 +14,7 @@ export interface ReservationRecord {
 }
 
 export interface CreateReservationInput {
-  frightonId: string;
+  studentNumber: string;
   bookId: string;
 }
 

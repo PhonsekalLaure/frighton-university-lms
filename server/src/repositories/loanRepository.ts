@@ -39,17 +39,17 @@ export function createLoanRepository(getClient: () => SupabaseClient = getSupaba
 
     async listAvailableBooks({ page, pageSize }) {
       const { data, error, count } = await getClient()
-        .from('books')
-        .select('books_id,title,author,copies', { count: 'exact' })
-        .eq('is_active', true)
-        .gt('copies', 0)
+        .from('catalog_books')
+        .select('id,title,author,available', { count: 'exact' })
+        .eq('active', true)
+        .gt('available', 0)
         .order('title')
-        .order('books_id')
+        .order('id')
         .range((page - 1) * pageSize, page * pageSize - 1);
       if (error) throw databaseError(error);
       return {
         data: (data ?? []).map((book) => ({
-          id: book.books_id, title: book.title, author: book.author, availableCopies: book.copies,
+          id: book.id, title: book.title, author: book.author, availableCopies: book.available,
         })),
         total: count ?? 0, page, pageSize,
       };
@@ -82,8 +82,8 @@ export function createLoanRepository(getClient: () => SupabaseClient = getSupaba
 
     async borrow(input, issuedBy) {
       const { data, error } = await getClient().rpc('borrow_book', {
-        p_student_number: input.frightonId, p_book_id: input.bookId, p_issued_by: issuedBy,
-      }).single<LoanRecord>();
+        p_student_number: input.studentNumber, p_book_id: input.bookId, p_issued_by: issuedBy,
+      }).retry(false).single<LoanRecord>();
       if (error) throw databaseError(error);
       if (!data) throw new HttpError(503, 'The checkout result is unavailable. Check active loans before retrying.');
       return data;
@@ -92,7 +92,7 @@ export function createLoanRepository(getClient: () => SupabaseClient = getSupaba
     async returnBook(id, returnedTo, fineCollected) {
       const { data, error } = await getClient().rpc('return_book', {
         p_borrow_id: id, p_returned_to: returnedTo, p_fine_collected: fineCollected,
-      }).single<LoanRecord>();
+      }).retry(false).single<LoanRecord>();
       if (error) throw databaseError(error);
       if (!data) throw new HttpError(503, 'The return result is unavailable. Check loan history before retrying.');
       return data;

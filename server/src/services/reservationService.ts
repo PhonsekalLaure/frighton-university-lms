@@ -10,7 +10,7 @@ type VerifyPatron = (studentNumber: string) => Promise<{ canBorrow: boolean; blo
 export class ReservationService {
   constructor(
     private readonly repository: ReservationRepository = reservationRepository,
-    private readonly verifyPatron: VerifyPatron = (studentNumber) => new LoanService(undefined, null).verifyPatron(studentNumber),
+    private readonly verifyPatron: VerifyPatron = (studentNumber) => new LoanService().verifyPatron(studentNumber),
   ) {}
 
   async searchStudents(query: string) {
@@ -23,7 +23,7 @@ export class ReservationService {
   }
 
   async create(input: CreateReservationInput, reservedBy: string) {
-    const patron = await this.verifyPatron(input.frightonId);
+    const patron = await this.verifyPatron(input.studentNumber);
     if (!patron.canBorrow) throw new HttpError(403, patron.blockedReason ?? 'This student cannot reserve books.');
     return serializeReservation(await this.repository.create(input, reservedBy));
   }

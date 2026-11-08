@@ -9,6 +9,8 @@ import { reservationRouter } from './routes/reservationRoutes.js';
 import { staffRouter } from './routes/staffRoutes.js';
 import { protectCookieRequests, requireLibrarian } from './middlewares/auth.js';
 import { errorHandler } from './middlewares/errorHandler.js';
+import { createServiceRouter } from './routes/serviceRoutes.js';
+import { createChargeRouter } from './routes/chargeRoutes.js';
 
 export const createApp = (): Express => {
   const app = express();
@@ -35,6 +37,8 @@ export const createApp = (): Express => {
   app.use('/api/v1/loans', requireLibrarian, loanRouter);
   app.use('/api/v1/reservations', requireLibrarian, reservationRouter);
   app.use('/api/v1/staff', requireLibrarian, staffRouter);
+  app.use('/api/v1/replacement-charges', requireLibrarian, createChargeRouter());
+  app.use('/service/v1', createServiceRouter());
 
   app.use(errorHandler);
   return app;

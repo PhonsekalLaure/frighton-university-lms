@@ -10,7 +10,7 @@ type CheckStudentStatus = (studentNumber: string) => Promise<SISStudentStatus>;
 export class LoanService {
   constructor(
     private readonly repository: LoanRepository = loanRepository,
-    private readonly checkStudentStatus: CheckStudentStatus | null = null,
+    private readonly checkStudentStatus: CheckStudentStatus = (number) => sisService.checkStudentStatus(number),
   ) {}
 
   async getPolicy() {
@@ -32,8 +32,7 @@ export class LoanService {
       blockedReason = 'This student already has an active loan. Return all borrowed books before borrowing again.';
     }
 
-    // Shared student profiles and unreturned LMS loans determine eligibility.
-    // A separate SIS check is used only when explicitly supplied by an integration.
+    // New transactions always verify SIS standing; returns remain independent.
     let sisStatus: SISStudentStatus | null = null;
     if (!blockedReason && this.checkStudentStatus) {
       try {
@@ -41,13 +40,13 @@ export class LoanService {
       } catch (cause) {
         throw new HttpError(502, 'Student standing could not be verified with SIS. Please try again.', { cause });
       }
-      if (sisStatus.frightonId !== studentNumber || sisStatus.canBorrow !== true) {
+      if (sisStatus.studentNumber !== studentNumber || sisStatus.canBorrow !== true) {
         blockedReason = 'This student cannot borrow due to their SIS standing or active holds.';
       }
     }
 
     return {
-      frightonId: student.student_number,
+      studentNumber: student.student_number,
       name: [student.first_name, student.last_name].join(' '),
       email: student.email,
       role: student.role,
@@ -79,7 +78,7 @@ export class LoanService {
   }
 
   async borrow(input: BorrowInput, issuedBy: string) {
-    const patron = await this.verifyPatron(input.frightonId);
+    const patron = await this.verifyPatron(input.studentNumber);
     if (!patron.canBorrow) throw new HttpError(403, patron.blockedReason ?? 'This student cannot borrow.');
     // The database repeats local checks under locks, since the preview can become stale.
     return serializeLoan(await this.repository.borrow(input, issuedBy));
@@ -92,7 +91,7 @@ export class LoanService {
 
   async reportOverdue(input: ReportOverdueInput) {
     try {
-      return await sisService.placeHold(input.frightonId, `Overdue Library Book: "${input.bookTitle}"`, input.fineAmount);
+      return await sisService.placeHold(input.studentNumber, `Overdue Library Book: "${input.bookTitle}"`, input.fineAmount);
     } catch (cause) {
       throw new HttpError(502, 'The overdue hold could not be registered with SIS.', { cause });
     }

@@ -6,7 +6,7 @@ import { clearAuthCookies, readAccessToken } from '../utils/authCookies.js';
 export const requireLibrarian: RequestHandler = async (req, res, next) => {
   const token = readAccessToken(req);
   if (!token) {
-    res.status(401).json({ error: 'Please sign in with your librarian account.' });
+    res.status(401).json({ error: 'Please sign in with your librarian account.',code:'UNAUTHORIZED' });
     return;
   }
 
@@ -26,9 +26,10 @@ export const protectCookieRequests: RequestHandler = (req, res, next) => {
     return;
   }
   const origin = req.get('origin');
-  const serverBearerRequest = !origin && /^Bearer \S+$/i.test(req.get('authorization') || '');
+  const serverBearerRequest = !origin && (/^Bearer \S+$/i.test(req.get('authorization') || '') ||
+    (req.path.startsWith('/service/v1/') && Boolean(req.get('x-sis-api-key'))));
   if (origin !== config.clientUrl && !serverBearerRequest) {
-    res.status(403).json({ error: 'Request origin is not allowed.' });
+    res.status(403).json({ error: 'Request origin is not allowed.',code:'FORBIDDEN' });
     return;
   }
   next();

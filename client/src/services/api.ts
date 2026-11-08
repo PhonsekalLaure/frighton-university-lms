@@ -22,6 +22,10 @@ async function failure(response: Response): Promise<ApiError> {
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   let response = await send(path, options);
   if (response.status === 401 && !path.startsWith('/auth/')) {
+    if (!['GET','HEAD'].includes(options.method ?? 'GET')) {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('lms:session-expired'));
+      throw await failure(response);
+    }
     if (!refreshing) {
       refreshing = send('/auth/refresh', { method: 'POST', body: '{}' }).then(async (result) => {
         if (!result.ok) {

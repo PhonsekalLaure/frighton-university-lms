@@ -14,7 +14,7 @@ export interface CirculationPolicy {
   dailyPenaltyRate: number; today: string; dueDate: string;
 }
 export interface Patron {
-  frightonId: string; name: string; program: string | null; department: string | null;
+  studentNumber: string; name: string; program: string | null; department: string | null;
   academicStatus: string; canBorrow: boolean; blockedReason: string | null;
   activeLoanCount: number; overdueLoanCount: number; policy: CirculationPolicy;
 }

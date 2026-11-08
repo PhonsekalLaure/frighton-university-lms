@@ -38,8 +38,8 @@ export function createReservationRepository(getClient: () => SupabaseClient = ge
 
     async create(input, reservedBy) {
       const { data, error } = await getClient().rpc('create_reservation', {
-        p_student_number: input.frightonId, p_book_id: input.bookId, p_reserved_by: reservedBy,
-      }).single<{ id: string }>();
+        p_student_number: input.studentNumber, p_book_id: input.bookId, p_reserved_by: reservedBy,
+      }).retry(false).single<{ id: string }>();
       if (error) throw databaseError(error);
       if (!data) throw new HttpError(503, 'The reservation result is unavailable. Refresh reservations before retrying.');
       return find(data.id);
@@ -48,7 +48,7 @@ export function createReservationRepository(getClient: () => SupabaseClient = ge
     async cancel(id, cancelledBy) {
       const { data, error } = await getClient().rpc('cancel_reservation', {
         p_reservation_id: id, p_cancelled_by: cancelledBy,
-      }).single<{ id: string }>();
+      }).retry(false).single<{ id: string }>();
       if (error) throw databaseError(error);
       if (!data) throw new HttpError(503, 'The cancellation result is unavailable. Refresh reservations before retrying.');
       return find(data.id);

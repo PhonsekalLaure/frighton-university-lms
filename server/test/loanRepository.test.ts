@@ -20,9 +20,9 @@ test('repository uses singular RPC responses, validated parameters, and bounded 
       res.end(JSON.stringify({ id: 'loan-result', fine_amount: 10 }));
     } else if (url.pathname.endsWith('/profiles')) {
       res.end(JSON.stringify({ id: 'student-result', student_number: 'STU-2026-0001', user: { is_active: true, role: 'Students' } }));
-    } else if (url.pathname.endsWith('/books')) {
+    } else if (url.pathname.endsWith('/catalog_books')) {
       res.setHeader('Content-Range', '0-0/1');
-      res.end(JSON.stringify([{ books_id: 'book-result', title: 'Dracula', author: 'Bram Stoker', copies: 1 }]));
+      res.end(JSON.stringify([{ id: 'book-result', title: 'Dracula', author: 'Bram Stoker', available: 1 }]));
     } else if (url.pathname.endsWith('/circulation_loans')) {
       if (url.searchParams.has('id')) {
         res.end(JSON.stringify({ id: 'loan-result' }));
@@ -43,19 +43,19 @@ test('repository uses singular RPC responses, validated parameters, and bounded 
     });
     const repository = createLoanRepository(() => client);
     assert.equal((await repository.getPolicy()).max_active_loans, 3);
-    const input = { frightonId: 'STU-2026-0001', bookId: 'book-id' };
+    const input = { studentNumber: 'STU-2026-0001', bookId: 'book-id' };
     assert.equal((await repository.borrow(input, 'staff-id')).id, 'loan-result');
     assert.equal((await repository.returnBook('loan-id', 'staff-id', true)).fine_amount, 10);
-    assert.equal((await repository.findPatron(input.frightonId))?.id, 'student-result');
+    assert.equal((await repository.findPatron(input.studentNumber))?.id, 'student-result');
     assert.equal((await repository.getActiveLoans('student-id'))[0].overdue_days, 2);
     const books = await repository.listAvailableBooks({ page: 1, pageSize: 10 });
     assert.equal(books.total, 1);
     assert.deepEqual(books.data[0], { id: 'book-result', title: 'Dracula', author: 'Bram Stoker', availableCopies: 1 });
-    await repository.listLoans({ status: 'active', studentNumber: input.frightonId, bookId: input.bookId, page: 2, pageSize: 10 });
+    await repository.listLoans({ status: 'active', studentNumber: input.studentNumber, bookId: input.bookId, page: 2, pageSize: 10 });
     assert.equal((await repository.findLoan('loan-id'))?.id, 'loan-result');
 
     assert.equal(requests[0].accept, 'application/vnd.pgrst.object+json');
-    assert.deepEqual(requests[1].body, { p_student_number: input.frightonId, p_book_id: input.bookId, p_issued_by: 'staff-id' });
+    assert.deepEqual(requests[1].body, { p_student_number: input.studentNumber, p_book_id: input.bookId, p_issued_by: 'staff-id' });
     assert.equal(requests[1].accept, 'application/vnd.pgrst.object+json');
     assert.deepEqual(requests[2].body, { p_borrow_id: 'loan-id', p_returned_to: 'staff-id', p_fine_collected: true });
     const loanQuery = new URL(requests[6].path, 'http://localhost');

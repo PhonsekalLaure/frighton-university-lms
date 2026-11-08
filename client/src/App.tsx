@@ -20,6 +20,7 @@ import { LibrariansPage } from './features/library/LibrariansPage';
 import { Field, FormActions, Modal } from './components/staff/StaffUI';
 import { RemoteState } from './components/staff/RemoteState';
 import { ReservationStudentSearch } from './components/staff/ReservationStudentSearch';
+import { ReplacementCharges } from './components/staff/ReplacementCharges';
 import './App.css';
 import './staff.css';
 
@@ -185,14 +186,14 @@ export default function App() {
         : student?.blockedReason || borrowPatron.error || 'Select an eligible student before confirming checkout.');
       return;
     }
-    if (!book?.active || book.available < 1) {
+    if (!book?.active || (book.available < 1 && !activeReservations.some(r=>r.bookId===book.id && r.studentId===borrowId.trim().toUpperCase()))) {
       setOperationError('Select an available book from the title suggestions before confirming checkout.');
       return;
     }
     void runMutation(async () => {
       const { loan } = await borrowBook(borrowId.trim().toUpperCase(), book.id);
       setCheckoutReceipt(toLoan({
-        ...loan, studentNumber: student.frightonId, studentName: student.name,
+        ...loan, studentNumber: student.studentNumber, studentName: student.name,
         bookTitle: book.title, bookAuthor: book.author,
       }));
       setBorrowId(''); setBorrowBookId('');
@@ -300,7 +301,8 @@ export default function App() {
         {dataError && <div className="inline-warning" role="alert"><AlertTriangle size={17}/><span>Records could not be refreshed: {dataError}</span><button type="button" className="staff-text-link" onClick={retry}>Try again</button></div>}
         {page === 'dashboard' && <DashboardPage books={books} activeLoans={activeLoans} overdueLoans={overdueLoans} reservations={activeReservations} bookById={bookById} onNavigate={go} onCirculation={(tab) => { setCirculationTab(tab); go('circulation'); }} />}
         {page === 'books' && <BooksPage books={books} query={catalogQuery} setQuery={setCatalogQuery} filter={bookStatusFilter} setFilter={setBookStatusFilter} onAdd={() => startBookForm()} onEdit={startBookForm} onArchive={requestArchive} onReserve={(bookId) => { setReservationForm({ studentId: '', bookId }); setModal('reservation'); }} />}
-        {page === 'circulation' && policy && <CirculationPage tab={circulationTab} setTab={setCirculationTab} books={books} activeLoans={activeLoans} loans={loans} policy={policy} borrowId={borrowId} setBorrowId={setBorrowId} borrowBookId={borrowBookId} setBorrowBookId={setBorrowBookId} returnLoanId={returnLoanId} setReturnLoanId={setReturnLoanId} patron={borrowPatron.patron} patronLoading={borrowPatron.loading} patronError={borrowPatron.error} checkoutError={operationError} returnQuote={returnQuote} quoteLoading={returnDetails.loading} quoteError={returnDetails.error} pending={pending} bookById={bookById} onBorrow={processBorrow} onReturn={processReturn} onReserve={() => { setReservationForm({ studentId: '', bookId: borrowBookId }); setModal('reservation'); }} />}
+        {page === 'circulation' && policy && <CirculationPage reservedBookIds={activeReservations.filter(r=>r.studentId===borrowId.trim().toUpperCase()).map(r=>r.bookId)} tab={circulationTab} setTab={setCirculationTab} books={books} activeLoans={activeLoans} loans={loans} policy={policy} borrowId={borrowId} setBorrowId={setBorrowId} borrowBookId={borrowBookId} setBorrowBookId={setBorrowBookId} returnLoanId={returnLoanId} setReturnLoanId={setReturnLoanId} patron={borrowPatron.patron} patronLoading={borrowPatron.loading} patronError={borrowPatron.error} checkoutError={operationError} returnQuote={returnQuote} quoteLoading={returnDetails.loading} quoteError={returnDetails.error} pending={pending} bookById={bookById} onBorrow={processBorrow} onReturn={processReturn} onReserve={() => { setReservationForm({ studentId: '', bookId: borrowBookId }); setModal('reservation'); }} />}
+        {page === 'circulation' && borrowId.trim() && <ReplacementCharges key={borrowId.trim().toUpperCase()} studentNumber={borrowId.trim().toUpperCase()}/>}
         {page === 'borrowed' && <BorrowersPage loans={loans} books={books} query={loanQuery} setQuery={setLoanQuery} filter={loanFilter} setFilter={setLoanFilter} bookById={bookById} onReturn={(id) => { setReturnLoanId(id); setCirculationTab('return'); go('circulation'); }} />}
         {page === 'reservations' && <ReservationsPage reservations={reservations} query={reservationQuery} setQuery={setReservationQuery} filter={reservationFilter} setFilter={setReservationFilter} bookById={(id) => books.find((book) => book.id === id)} onNew={() => { setReservationForm({ studentId: '', bookId: '' }); setModal('reservation'); }} onCancel={requestCancelReservation} onBorrow={(reservation) => { setBorrowId(reservation.studentId); setBorrowBookId(reservation.bookId); setCirculationTab('borrow'); go('circulation'); }} />}
         {page === 'librarians' && role === 'Admin' && <LibrariansPage staff={staff}/>}

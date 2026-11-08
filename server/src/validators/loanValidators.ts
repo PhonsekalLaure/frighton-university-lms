@@ -51,7 +51,7 @@ export function parseLoanFilters(query: Record<string, unknown>): LoanFilters {
   return {
     ...parsePagination(query),
     status,
-    ...(query.frightonId !== undefined && { studentNumber: parseStudentNumber(query.frightonId) }),
+    ...(query.studentNumber !== undefined && { studentNumber: parseStudentNumber(query.studentNumber) }),
     ...(query.bookId !== undefined && { bookId: parseUuid(query.bookId, 'bookId') }),
   };
 }
@@ -59,7 +59,7 @@ export function parseLoanFilters(query: Record<string, unknown>): LoanFilters {
 export function parseBorrowBody(body: unknown): BorrowInput {
   const input = object(body);
   return {
-    frightonId: parseStudentNumber(input.frightonId),
+    studentNumber: parseStudentNumber(input.studentNumber),
     bookId: parseUuid(input.bookId, 'bookId'),
   };
 }
@@ -81,5 +81,5 @@ export function parseReportOverdueBody(body: unknown): ReportOverdueInput {
   if (typeof fineAmount !== 'number' || !Number.isFinite(fineAmount) || fineAmount < 0) {
     throw new HttpError(400, 'fineAmount must be a non-negative number.');
   }
-  return { frightonId: parseStudentNumber(input.frightonId), bookTitle: input.bookTitle.trim(), fineAmount };
+  return { studentNumber: parseStudentNumber(input.studentNumber), bookTitle: input.bookTitle.trim(), fineAmount };
 }

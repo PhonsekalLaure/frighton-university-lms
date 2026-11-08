@@ -16,9 +16,9 @@ export function searchReservationStudents(query: string, signal?: AbortSignal): 
   return apiRequest<ReservationStudent[]>(`/v1/reservations/students?q=${encodeURIComponent(query)}`, { signal });
 }
 
-export function createReservation(frightonId: string, bookId: string): Promise<Reservation> {
+export function createReservation(studentNumber: string, bookId: string): Promise<Reservation> {
   return apiRequest<Reservation>('/v1/reservations', {
-    method: 'POST', body: JSON.stringify({ frightonId, bookId }),
+    method: 'POST', body: JSON.stringify({ studentNumber, bookId }),
   });
 }
 

@@ -9,7 +9,7 @@ export interface Book {
 }
 
 export interface PatronStatus {
-  frightonId: string;
+  studentNumber: string;
   name: string;
   email: string;
   role: string;

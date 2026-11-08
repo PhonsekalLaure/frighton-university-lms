@@ -17,7 +17,7 @@ export const errorHandler = (
       const cause = err.cause && typeof err.cause === 'object' && 'code' in err.cause ? err.cause : undefined;
       console.error('LMS dependency error:', { status: err.status, code: cause?.code, message: err.message });
     }
-    res.status(err.status).json({ error: err.message });
+    res.status(err.status).json({ error: err.message, code: err instanceof HttpError ? err.code : 'UNAUTHORIZED' });
     return;
   }
   if (err.status === 413) {

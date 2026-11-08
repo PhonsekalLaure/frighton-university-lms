@@ -2,7 +2,7 @@
 
 A modern Library Management System built for Frighton University with **React (TypeScript)**, **Node.js + Express (TypeScript)**, and **Supabase (PostgreSQL & Auth)**. 
 
-Pre-integrated with the **Frighton University Student Information System (SIS)** to verify patron enrollment and enforce academic holds for overdue materials.
+Integrates with **Frighton University SIS** for student self-service, borrowing eligibility, and library-debt holds. Deploy the reviewed migrations, configure distinct directional credentials, and start the maintenance worker before enabling self-service. See [integration operations](docs/library-self-service-operations.md).
 
 ---
 

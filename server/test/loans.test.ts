@@ -41,7 +41,7 @@ const patron = {
   academic_status: 'active', role: 'student', user: { is_active: true, role: 'Students' },
 };
 const sisStatus = {
-  frightonId: studentNumber, name: 'Mina Harker', email: patron.email,
+  studentNumber: studentNumber, name: 'Mina Harker', email: patron.email,
   role: 'student', academicStatus: 'active', department: 'Arts', canBorrow: true, activeHolds: [],
 };
 
@@ -86,8 +86,8 @@ function testApp(service: LoanService) {
 }
 
 test('validates bodies and query values without coercing untrusted input', () => {
-  assert.deepEqual(parseBorrowBody({ frightonId: ' stu-2026-0001 ', bookId }), { frightonId: studentNumber, bookId });
-  for (const body of [null, [], {}, { frightonId: {}, bookId }, { frightonId: studentNumber, bookId: 1 }, { frightonId: '../admin', bookId }]) {
+  assert.deepEqual(parseBorrowBody({ studentNumber: ' stu-2026-0001 ', bookId }), { studentNumber: studentNumber, bookId });
+  for (const body of [null, [], {}, { studentNumber: {}, bookId }, { studentNumber: studentNumber, bookId: 1 }, { studentNumber: '../admin', bookId }]) {
     assert.throws(() => parseBorrowBody(body), (error) => error instanceof HttpError && error.status === 400);
   }
   assert.deepEqual(parseReturnBody({}), { fineCollected: false });
@@ -115,15 +115,13 @@ test('eligibility blocks inactive students and any active borrower before checko
     const result = await service.verifyPatron(studentNumber);
     assert.equal(result.canBorrow, false);
     assert.ok(result.blockedReason);
-    await assert.rejects(service.borrow({ frightonId: studentNumber, bookId }, staffId), { status: 403 });
+    await assert.rejects(service.borrow({ studentNumber: studentNumber, bookId }, staffId), { status: 403 });
     assert.equal(borrowed, false);
   }
 });
 
-test('shared student records allow checkout without SIS and require return before another checkout', async (t) => {
-  const sisLookup = t.mock.method(sisService, 'checkStudentStatus', async () => {
-    throw new Error('SIS is unavailable');
-  });
+test('default checkout verifies SIS and requires return before another checkout', async (t) => {
+  const sisLookup = t.mock.method(sisService, 'checkStudentStatus', async () => sisStatus);
   let activeLoans: Array<{ overdue_days: number }> = [];
   let checkoutCount = 0;
   const service = new LoanService(repository({
@@ -139,18 +137,18 @@ test('shared student records allow checkout without SIS and require return befor
     },
   }));
   assert.equal((await service.verifyPatron(studentNumber)).canBorrow, true);
-  await service.borrow({ frightonId: studentNumber, bookId }, staffId);
+  await service.borrow({ studentNumber: studentNumber, bookId }, staffId);
   const blocked = await service.verifyPatron(studentNumber);
   assert.equal(blocked.canBorrow, false);
   assert.equal(blocked.activeLoanCount, 1);
   assert.match(blocked.blockedReason!, /Return all borrowed books/);
-  await assert.rejects(service.borrow({ frightonId: studentNumber, bookId }, staffId), { status: 403 });
+  await assert.rejects(service.borrow({ studentNumber: studentNumber, bookId }, staffId), { status: 403 });
   assert.equal(checkoutCount, 1);
   await service.returnBook(loanId, staffId, false);
   assert.equal((await service.verifyPatron(studentNumber)).canBorrow, true);
-  await service.borrow({ frightonId: studentNumber, bookId }, staffId);
+  await service.borrow({ studentNumber: studentNumber, bookId }, staffId);
   assert.equal(checkoutCount, 2);
-  assert.equal(sisLookup.mock.callCount(), 0);
+  assert.equal(sisLookup.mock.callCount(), 4);
 });
 
 test('HTTP checkout rejects an active borrower without creating another loan', async () => {
@@ -161,7 +159,7 @@ test('HTTP checkout rejects an active borrower without creating another loan', a
   await withServer(testApp(service), async (base) => {
     const response = await fetch(base + '/loans/borrow', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ frightonId: studentNumber, bookId }),
+      body: JSON.stringify({ studentNumber: studentNumber, bookId }),
     });
     assert.equal(response.status, 403);
     assert.match((await response.json()).error, /already has an active loan/);
@@ -169,9 +167,9 @@ test('HTTP checkout rejects an active borrower without creating another loan', a
 });
 
 test('explicit SIS integrations still reject holds, mismatched students, and failed verification', async () => {
-  for (const status of [{ ...sisStatus, canBorrow: false }, { ...sisStatus, frightonId: 'ANOTHER-STUDENT' }]) {
+  for (const status of [{ ...sisStatus, canBorrow: false }, { ...sisStatus, studentNumber: 'ANOTHER-STUDENT' }]) {
     const service = new LoanService(repository(), async () => status);
-    await assert.rejects(service.borrow({ frightonId: studentNumber, bookId }, staffId), { status: 403 });
+    await assert.rejects(service.borrow({ studentNumber: studentNumber, bookId }, staffId), { status: 403 });
   }
   const service = new LoanService(repository(), async () => { throw new Error('upstream private details'); });
   await assert.rejects(service.verifyPatron(studentNumber), { status: 502 });
@@ -188,7 +186,7 @@ test('HTTP checkout uses authenticated staff and database-owned dates and amount
   let actor = '';
   const service = new LoanService(repository({
     borrow: async (input, issuedBy) => {
-      assert.deepEqual(input, { frightonId: studentNumber, bookId });
+      assert.deepEqual(input, { studentNumber: studentNumber, bookId });
       actor = issuedBy;
       return loan;
     },
@@ -196,7 +194,7 @@ test('HTTP checkout uses authenticated staff and database-owned dates and amount
   await withServer(testApp(service), async (base) => {
     const response = await fetch(base + '/loans/borrow', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ frightonId: studentNumber, bookId, issuedBy: studentId, dueDate: '2099-01-01', fineAmount: 0 }),
+      body: JSON.stringify({ studentNumber: studentNumber, bookId, issuedBy: studentId, dueDate: '2099-01-01', fineAmount: 0 }),
     });
     assert.equal(response.status, 201);
     const data = await response.json();
