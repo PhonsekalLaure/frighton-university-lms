@@ -7,7 +7,33 @@ export type Loan = {
   dailyPenaltyRate: number; overdueDays: number; fineAmount: number;
 };
 export type Reservation = { id: string; studentId: string; student: string; bookId: string; reserved: string; expires: string; status: 'Active' | 'Fulfilled' | 'Cancelled' | 'Expired' };
-export type Staff = { name: string; email: string; active: boolean; since: string };
+export type Staff = {
+  id: string;
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  name: string;
+  email: string;
+  active: boolean;
+  since: string;
+  updatedAt?: string;
+};
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
+export interface StaffInvitation {
+  id: string;
+  email: string;
+  token: string;
+  role: 'Librarian' | 'Admin';
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  invitedBy?: string | null;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt?: string | null;
+  status: InvitationStatus;
+  inviteLink?: string;
+}
 export type StudentRecord = { name: string; major: string; status: string };
 export interface CirculationPolicy {
   timeZone: string; loanPeriodDays: number; maxActiveLoans: number;
