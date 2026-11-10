@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowLeftRight, ArrowRight, BookmarkCheck, CheckCircle2, ChevronDown, Clock3, FileText, LayoutDashboard, Library, LogOut, Menu, Search, UserCog, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, ArrowRight, BookmarkCheck, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LayoutDashboard, Library, LogOut, Menu, Search, UserCog, Users, X } from 'lucide-react';
 import type { BookRecord, Loan, Page, Reservation, Staff } from './types/library';
 import { formatDate, getInitials, money } from './utils/library';
 import { useAuth } from './hooks/useAuth';
@@ -17,6 +17,7 @@ import { CirculationPage } from './features/library/CirculationPage';
 import { BorrowersPage } from './features/library/BorrowersPage';
 import { ReservationsPage } from './features/library/ReservationsPage';
 import { LibrariansPage } from './features/library/LibrariansPage';
+import { AuditTrailPage } from './features/library/AuditTrailPage';
 import { Field, FormActions, Modal } from './components/staff/StaffUI';
 import { RemoteState } from './components/staff/RemoteState';
 import { ReservationStudentSearch } from './components/staff/ReservationStudentSearch';
@@ -35,6 +36,7 @@ const pageLabels: Record<Page, string> = {
   borrowed: 'Active borrowers',
   reservations: 'Reservations',
   librarians: 'Librarian management',
+  audit: 'Audit trail',
 };
 const pagePaths: Record<Page, string> = {
   dashboard: '/dashboard',
@@ -43,6 +45,7 @@ const pagePaths: Record<Page, string> = {
   borrowed: '/borrowers',
   reservations: '/reservations',
   librarians: '/librarians',
+  audit: '/audit-trail',
 };
 const pageFromPath = (pathname: string): Page | undefined => {
   const normalizedPath = pathname.replace(/\/+$/, '') || '/';
@@ -134,7 +137,7 @@ export default function App() {
   }, [librarian, catalogRecords.reload, loanRecords.reload, policyRecord.reload, reservationRecords.reload, librarySessionId]);
 
   useEffect(() => {
-    if (librarian && librarian.role !== 'admin' && page === 'librarians') {
+    if (librarian && librarian.role !== 'admin' && (page === 'librarians' || page === 'audit')) {
       setPage('dashboard');
       window.history.replaceState({ libraryPage: 'dashboard' }, '', pagePaths.dashboard);
     }
@@ -145,7 +148,7 @@ export default function App() {
   const activeReservations = reservations.filter((item) => item.status === 'Active');
   const bookById = useCallback((id: string) => books.find((book) => book.id === id), [books]);
   const go = (next: Page) => {
-    if (pending || (next === 'librarians' && role !== 'Admin')) return;
+    if (pending || ((next === 'librarians' || next === 'audit') && role !== 'Admin')) return;
     if (next !== page) window.history.pushState({ libraryPage: next }, '', pagePaths[next]);
     setPage(next); setMobileNav(false); setNotice(''); setOperationError('');
   };
@@ -258,11 +261,12 @@ export default function App() {
     { id: 'borrowed', label: 'Active borrowers', icon: Users, count: overdueLoans.length },
     { id: 'reservations', label: 'Reservations', icon: BookmarkCheck },
     { id: 'librarians', label: 'Librarian directory', icon: UserCog, admin: true },
+    { id: 'audit', label: 'Audit trail', icon: ClipboardList, admin: true },
   ];
   const globalStudent = lookup.trim().toUpperCase();
   const lookupStudent = quickPatron.patron;
   const staffName = librarian.fullName || librarian.email;
-  const pageRecords = page === 'librarians' ? [staffRecords]
+  const pageRecords = page === 'audit' ? [] : page === 'librarians' ? [staffRecords]
     : page === 'books' ? [catalogRecords]
     : page === 'reservations' ? [reservationRecords, catalogRecords]
     : page === 'borrowed' ? [loanRecords, catalogRecords]
@@ -306,6 +310,7 @@ export default function App() {
         {page === 'borrowed' && <BorrowersPage loans={loans} books={books} query={loanQuery} setQuery={setLoanQuery} filter={loanFilter} setFilter={setLoanFilter} bookById={bookById} onReturn={(id) => { setReturnLoanId(id); setCirculationTab('return'); go('circulation'); }} />}
         {page === 'reservations' && <ReservationsPage reservations={reservations} query={reservationQuery} setQuery={setReservationQuery} filter={reservationFilter} setFilter={setReservationFilter} bookById={(id) => books.find((book) => book.id === id)} onNew={() => { setReservationForm({ studentId: '', bookId: '' }); setModal('reservation'); }} onCancel={requestCancelReservation} onBorrow={(reservation) => { setBorrowId(reservation.studentId); setBorrowBookId(reservation.bookId); setCirculationTab('borrow'); go('circulation'); }} />}
         {page === 'librarians' && role === 'Admin' && <LibrariansPage staff={staff}/>}
+        {page === 'audit' && role === 'Admin' && <AuditTrailPage sessionId={librarian.id}/>}
         </>}
       </div>
       <footer className="staff-footer"><span>FRIGHTON UNIVERSITY LIBRARY</span><span>Staff circulation console</span></footer>
