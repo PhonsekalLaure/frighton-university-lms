@@ -7,15 +7,15 @@ export class BookService {
   constructor(private readonly repository = bookRepository) {}
   list(pagination: Pagination) { return this.repository.list(pagination); }
   image(id: string) { return this.repository.image(id); }
-  create(input: SaveBookInput) {
+  create(input: SaveBookInput, actorId?: string) {
     if (!input.image) throw new ValidationError({ image: 'Upload a cover image for this book.' });
-    return this.repository.save(null, input);
+    return this.repository.save(null, input, actorId);
   }
-  async update(id: string, input: SaveBookInput) {
+  async update(id: string, input: SaveBookInput, actorId?: string) {
     if (!input.image && !(await this.repository.hasImage(id))) {
       throw new ValidationError({ image: 'Upload a cover image for this book.' });
     }
-    return this.repository.save(id, input);
+    return this.repository.save(id, input, actorId);
   }
-  archive(id: string) { return this.repository.archive(id); }
+  archive(id: string, actorId?: string) { return this.repository.archive(id, actorId); }
 }

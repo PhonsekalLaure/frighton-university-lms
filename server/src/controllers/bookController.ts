@@ -10,8 +10,8 @@ export function createBookController(service = new BookService()) {
       const image = await service.image(parseUuid(req.params.id, 'Book ID'));
       res.set('Cache-Control', 'no-store').type(image.contentType).send(image.bytes);
     }),
-    create: asyncHandler(async (req, res) => { res.status(201).json(await service.create(parseBookBody(req.body))); }),
-    update: asyncHandler(async (req, res) => { res.json(await service.update(parseUuid(req.params.id, 'bookId'), parseBookBody(req.body, false))); }),
-    archive: asyncHandler(async (req, res) => { res.json(await service.archive(parseUuid(req.params.id, 'bookId'))); }),
+    create: asyncHandler(async (req, res) => { res.status(201).json(await service.create(parseBookBody(req.body), res.locals.librarian?.id)); }),
+    update: asyncHandler(async (req, res) => { res.json(await service.update(parseUuid(req.params.id, 'bookId'), parseBookBody(req.body, false), res.locals.librarian?.id)); }),
+    archive: asyncHandler(async (req, res) => { res.json(await service.archive(parseUuid(req.params.id, 'bookId'), res.locals.librarian?.id)); }),
   };
 }
