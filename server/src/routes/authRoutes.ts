@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { createSupabaseAuthClient, getSupabaseAdmin } from '../config/supabase.js';
 import { createAuthRateLimit, requireLibrarian } from '../middlewares/auth.js';
+import { acceptInvitation, getInvitationByEmail, getInvitationByToken } from '../repositories/invitationRepository.js';
 import { AuthError, findLibrarian } from '../services/authService.js';
 import { clearAuthCookies, readAccessToken, readCookie, setAuthCookies } from '../utils/authCookies.js';
+import { HttpError } from '../utils/httpError.js';
+import { validateAcceptInvitation } from '../validators/invitationValidators.js';
 
 export const authRouter = Router();
 
@@ -92,6 +95,40 @@ authRouter.post('/logout', async (req, res, next) => {
       }
     }
     res.sendStatus(204);
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.get('/invitation', async (req, res, next) => {
+  try {
+    const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+    const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+
+    if (!token && !email) {
+      throw new HttpError(400, 'Invitation token or email is missing.');
+    }
+
+    let invitation = token ? await getInvitationByToken(token) : null;
+    if (!invitation && email) {
+      invitation = await getInvitationByEmail(email);
+    }
+
+    if (!invitation) {
+      throw new HttpError(404, 'Invitation not found or link is invalid.');
+    }
+
+    res.json({ invitation });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.post('/accept-invite', createAuthRateLimit(15, 15 * 60 * 1000), async (req, res, next) => {
+  try {
+    const input = validateAcceptInvitation(req.body);
+    const result = await acceptInvitation(input);
+    res.json({ message: 'Account created successfully.', ...result });
   } catch (error) {
     next(error);
   }
