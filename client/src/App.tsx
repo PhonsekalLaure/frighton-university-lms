@@ -11,6 +11,7 @@ import { getAllPages } from './services/api';
 import { archiveBook, borrowBook, getBooks, getLoan, getLoans, getPolicy, returnBook, saveBook as persistBook, toLoan } from './services/library';
 import { cancelReservation, createReservation, getReservations } from './services/reservations';
 import { LoginPage } from './pages/LoginPage';
+import { CreateAccountPage } from './pages/CreateAccountPage';
 import { DashboardPage } from './features/library/DashboardPage';
 import { BooksPage } from './features/library/BooksPage';
 import { CirculationPage } from './features/library/CirculationPage';
@@ -248,6 +249,21 @@ export default function App() {
     }); },
   });
 
+  const isCreateAccountPath = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/create-account') ||
+    (window.location.search.includes('token=') && !librarian)
+  );
+  if (isCreateAccountPath) {
+    return (
+      <CreateAccountPage
+        onGoToLogin={() => {
+          window.history.pushState({}, '', '/');
+          setPage('dashboard');
+        }}
+      />
+    );
+  }
+
   if (checking) return <main className="login-page"><RemoteState loading error="" onRetry={() => {}}/></main>;
   if (!librarian) return <LoginPage onSignIn={async (email, password, remember) => {
     await login(email, password, remember);
@@ -309,7 +325,14 @@ export default function App() {
         {page === 'circulation' && borrowId.trim() && <ReplacementCharges key={borrowId.trim().toUpperCase()} studentNumber={borrowId.trim().toUpperCase()}/>}
         {page === 'borrowed' && <BorrowersPage loans={loans} books={books} query={loanQuery} setQuery={setLoanQuery} filter={loanFilter} setFilter={setLoanFilter} bookById={bookById} onReturn={(id) => { setReturnLoanId(id); setCirculationTab('return'); go('circulation'); }} />}
         {page === 'reservations' && <ReservationsPage reservations={reservations} query={reservationQuery} setQuery={setReservationQuery} filter={reservationFilter} setFilter={setReservationFilter} bookById={(id) => books.find((book) => book.id === id)} onNew={() => { setReservationForm({ studentId: '', bookId: '' }); setModal('reservation'); }} onCancel={requestCancelReservation} onBorrow={(reservation) => { setBorrowId(reservation.studentId); setBorrowBookId(reservation.bookId); setCirculationTab('borrow'); go('circulation'); }} />}
-        {page === 'librarians' && role === 'Admin' && <LibrariansPage staff={staff}/>}
+        {page === 'librarians' && role === 'Admin' && (
+          <LibrariansPage
+            staff={staff}
+            onReload={staffRecords.reload}
+            onNotice={flash}
+            currentAdminId={librarian.id}
+          />
+        )}
         {page === 'audit' && role === 'Admin' && <AuditTrailPage sessionId={librarian.id}/>}
         </>}
       </div>
