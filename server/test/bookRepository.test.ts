@@ -20,7 +20,7 @@ async function withStore(run: (state: ReturnType<typeof stateFor>, repository: R
     const bytes = Buffer.concat(chunks);
     const body = req.headers['content-type']?.includes('application/json') && bytes.length ? JSON.parse(bytes.toString()) : {};
     const url = new URL(req.url ?? '/', 'http://localhost');
-    state.requests.push({ method: req.method ?? '', path: req.url ?? '', body, bytes, contentType: req.headers['content-type'] });
+    state.requests.push({ method: req.method ?? '', path: req.url ?? '', body, bytes, contentType: req.headers['content-type'], actor: req.headers['x-lms-actor-id'] });
     res.setHeader('Content-Type', 'application/json');
     const storagePrefix = '/storage/v1/object/book-covers/';
     if (url.pathname.startsWith(storagePrefix)) {
@@ -76,7 +76,7 @@ function stateFor() {
   return {
     rows: new Map<string, Row>([[bookId, { books_id: bookId, title: 'Dracula', author: 'Bram Stoker', category: 'Literature', publication_year: 1897, copies: 1, shelf_location: 'A-1', is_active: true, cover_image_path: originalPath }]]),
     files: new Map([[originalPath, { bytes: Buffer.from('image-bytes'), type: 'image/png' }]]),
-    requests: [] as Array<{ method: string; path: string; body: Record<string, unknown>; bytes: Buffer; contentType: string | undefined }>,
+    requests: [] as Array<{ method: string; path: string; body: Record<string, unknown>; bytes: Buffer; contentType: string | undefined; actor?: string | string[] }>,
     saveFailed: false, stockConflict: false, coverConflict: false, bucketMissing: false, cleanupFailed: false, catalogReadFailsAfterSave:false,commitResponseLost:false,
   };
 }
@@ -184,5 +184,20 @@ test('cleanup errors after a successful replacement do not report the saved book
     const saved = await repository.save(bookId, { ...input, image });
     assert.equal(saved.hasImage, true); assert.notEqual(state.rows.get(bookId)?.cover_image_path, originalPath);
     assert.ok(state.files.has(state.rows.get(bookId)!.cover_image_path!));
+  });
+});
+
+
+test('catalog writes attribute actions to the authenticated staff member', async () => {
+  await withStore(async (state, repository) => {
+    const actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await repository.save(bookId, input, actor);
+    const update = state.requests.find(request => request.method === 'PATCH' && request.path.startsWith('/rest/v1/books'))!;
+    assert.equal(update.actor, actor);
+    assert.equal('audit_actor_id' in update.body, false);
+    await repository.archive(bookId, actor);
+    const archived = state.requests.filter(request => request.method === 'PATCH' && request.path.startsWith('/rest/v1/books')).at(-1)!;
+    assert.equal(archived.actor, actor);
+    assert.equal('audit_request_id' in archived.body, false);
   });
 });
