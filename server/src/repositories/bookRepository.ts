@@ -89,7 +89,7 @@ export function createBookRepository(client: () => SupabaseClient = getSupabaseA
       if (!path) throw new HttpError(404, 'This book does not have a cover image.');
       return covers.download(path);
     },
-    async save(id: string | null, input: SaveBookInput): Promise<CatalogBook> {
+    async save(id: string | null, input: SaveBookInput, actorId?: string): Promise<CatalogBook> {
       const current = id ? await find(id) : null;
       const checkedOut = current ? current.total - (current.physical_available ?? current.available) : 0;
       if (current && input.total < current.total - current.available) {
@@ -114,12 +114,9 @@ export function createBookRepository(client: () => SupabaseClient = getSupabaseA
       let saved: CatalogBook;
       try {
         if (!current) {
-          const { data, error } = await client()
-            .from('books')
-            .insert({ ...values, books_id: bookId })
-            .retry(false)
-            .select(bookFields)
-            .single<BookRow>();
+          const request = client().from('books').insert({ ...values, books_id: bookId }).retry(false);
+          if (actorId) request.setHeader('x-lms-actor-id', actorId);
+          const { data, error } = await request.select(bookFields).single<BookRow>();
           if (error) throw databaseError(error);
           saved = toBook(data, input.total);
         } else {
@@ -134,6 +131,7 @@ export function createBookRepository(client: () => SupabaseClient = getSupabaseA
             query = previousPath
               ? query.eq('cover_image_path', previousPath)
               : query.is('cover_image_path', null);
+          if (actorId) query.setHeader('x-lms-actor-id', actorId);
           const { data, error } = await query.select(bookFields).maybeSingle<BookRow>();
           if (error) throw databaseError(error);
           if (!data)
@@ -166,13 +164,10 @@ export function createBookRepository(client: () => SupabaseClient = getSupabaseA
       if (uploadedPath && previousPath) await covers.remove(previousPath);
       return saved;
     },
-    async archive(id: string): Promise<CatalogBook> {
-      const { data, error } = await client()
-        .from('books')
-        .update({ is_active: false })
-        .eq('books_id', id)
-        .select(bookFields)
-        .maybeSingle<BookRow>();
+    async archive(id: string, actorId?: string): Promise<CatalogBook> {
+      const request = client().from('books').update({ is_active: false }).eq('books_id', id);
+      if (actorId) request.setHeader('x-lms-actor-id', actorId);
+      const { data, error } = await request.select(bookFields).maybeSingle<BookRow>();
       if (error) throw databaseError(error);
       if (!data) throw new HttpError(404, 'Book was not found.');
       return toBook(data, (await find(id)).total);

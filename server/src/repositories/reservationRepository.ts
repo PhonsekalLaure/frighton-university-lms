@@ -48,7 +48,7 @@ export function createReservationRepository(getClient: () => SupabaseClient = ge
     async cancel(id, cancelledBy) {
       const { data, error } = await getClient().rpc('cancel_reservation', {
         p_reservation_id: id, p_cancelled_by: cancelledBy,
-      }).retry(false).single<{ id: string }>();
+      }).setHeader('x-lms-actor-id', cancelledBy).retry(false).single<{ id: string }>();
       if (error) throw databaseError(error);
       if (!data) throw new HttpError(503, 'The cancellation result is unavailable. Refresh reservations before retrying.');
       return find(data.id);
