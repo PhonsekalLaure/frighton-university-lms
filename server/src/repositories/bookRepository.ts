@@ -11,7 +11,7 @@ type CatalogRow = Omit<CatalogBook, 'hasImage'> & { physical_available?: number 
 type BookRow = Omit<CatalogRow, 'total'> & { cover_image_path: string | null };
 const catalogFields = 'id,title,author,category,year,available,total,shelf,active,physical_available';
 const bookFields =
-  'id:books_id,title,author,category,year:publication_year,available:copies,shelf:shelf_location,active:is_active,cover_image_path';
+  'id:books_id,title,author,category,year:publication_year,available:copies,shelf:shelf_location,active:is_active,cover_image_path,publisher,description';
 const toBook = ({ cover_image_path, ...book }: BookRow, total: number): CatalogBook => ({
   ...book,
   category: book.category ?? '',
@@ -61,21 +61,25 @@ export function createBookRepository(client: () => SupabaseClient = getSupabaseA
         .returns<CatalogRow[]>();
       if (error) throw databaseError(error);
       const rows = data ?? [];
-      const images = new Set<string>();
+      const metadata = new Map<string, { cover_image_path: string | null; publisher?: string | null; description?: string | null }>();
       if (rows.length) {
         const result = await client()
           .from('books')
-          .select('books_id,cover_image_path')
+          .select('books_id,cover_image_path,publisher,description')
           .in(
             'books_id',
             rows.map((book) => book.id),
           )
-          .returns<Array<{ books_id: string; cover_image_path: string | null }>>();
+          .returns<Array<{ books_id: string; cover_image_path: string | null; publisher?: string | null; description?: string | null }>>();
         if (result.error) throw databaseError(result.error);
-        for (const book of result.data ?? []) if (book.cover_image_path) images.add(book.books_id);
+        for (const book of result.data ?? []) metadata.set(book.books_id, book);
       }
       return {
-        data: rows.map((book) => ({ ...book, hasImage: images.has(book.id) })),
+        data: rows.map((book) => {
+          const details = metadata.get(book.id);
+          return { ...book, hasImage: Boolean(details?.cover_image_path),
+            publisher: details?.publisher ?? '', description: details?.description ?? '' };
+        }),
         total: count ?? 0,
         page,
         pageSize,
@@ -108,6 +112,8 @@ export function createBookRepository(client: () => SupabaseClient = getSupabaseA
         category: input.category,
         publication_year: input.year,
         shelf_location: input.shelf,
+        ...(input.publisher !== undefined && { publisher: input.publisher }),
+        ...(input.description !== undefined && { description: input.description }),
         copies: input.total - checkedOut,
         ...(uploadedPath && { cover_image_path: uploadedPath }),
       };
@@ -163,6 +169,24 @@ export function createBookRepository(client: () => SupabaseClient = getSupabaseA
       }
       if (uploadedPath && previousPath) await covers.remove(previousPath);
       return saved;
+    },
+    async adjustCopies(id: string, total: number, expectedTotal: number, actorId?: string): Promise<CatalogBook> {
+      const current = await find(id);
+      if (current.total !== expectedTotal) {
+        throw new HttpError(409, 'The copy count changed. Reload the catalog and try again.');
+      }
+      if (total < current.total - current.available) {
+        throw new ValidationError({ total: 'Total copies cannot be less than copies checked out or reserved.' });
+      }
+      const physical = current.physical_available ?? current.available;
+      const checkedOut = current.total - physical;
+      const request = client().from('books').update({ copies: total - checkedOut })
+        .eq('books_id', id).eq('copies', physical).retry(false);
+      if (actorId) request.setHeader('x-lms-actor-id', actorId);
+      const { data, error } = await request.select(bookFields).maybeSingle<BookRow>();
+      if (error) throw databaseError(error);
+      if (!data) throw new HttpError(409, 'Stock changed while saving. Reload the catalog and try again.');
+      return { ...toBook(data, total), available: data.available - (physical - current.available) };
     },
     async archive(id: string, actorId?: string): Promise<CatalogBook> {
       const request = client().from('books').update({ is_active: false }).eq('books_id', id);

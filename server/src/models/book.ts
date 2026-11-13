@@ -3,6 +3,8 @@ export interface CatalogBook {
   title: string;
   author: string;
   category: string;
+  publisher?: string | null;
+  description?: string | null;
   year: number | null;
   available: number;
   total: number;
@@ -20,4 +22,6 @@ export interface SaveBookInput {
   year: number;
   total: number;
   shelf: string;
+  publisher?: string;
+  description?: string;
 }

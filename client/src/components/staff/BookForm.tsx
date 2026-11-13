@@ -11,6 +11,7 @@ export function BookForm({ book, pending, onSave, onCancel }: {
   book: BookRecord | null; pending: boolean; onSave: (input: BookInput) => Promise<void>; onCancel: () => void;
 }) {
   const [values, setValues] = useState<Values>(() => ({ title: book?.title ?? '', author: book?.author ?? '',
+    publisher: book?.publisher ?? '', description: book?.description ?? '',
     category: book?.category ?? '', year: book?.year?.toString() ?? '', total: String(book?.total ?? 1), shelf: book?.shelf ?? '' }));
   const [image, setImage] = useState<string | undefined>();
   const [errors, setErrors] = useState<Errors>({});
@@ -66,6 +67,7 @@ export function BookForm({ book, pending, onSave, onCancel }: {
     setMessage('');
     try {
       await onSave({ title: values.title.trim(), author: values.author.trim(), category: values.category.trim(),
+        publisher: values.publisher?.trim() ?? '', description: values.description?.trim() ?? '',
         shelf: values.shelf.trim(), year: Number(values.year), total: Number(values.total),
         ...(image !== undefined && { image }) });
     } catch (error) {
@@ -75,12 +77,12 @@ export function BookForm({ book, pending, onSave, onCancel }: {
       (form.elements.namedItem(Object.keys(fields)[0]) as HTMLElement | null)?.focus();
     }
   }
-  const labels: Record<keyof Values, string> = { title: 'Book title', author: 'Author', category: 'Category', year: 'Publication year', total: 'Total copies', shelf: 'Shelf location' };
+  const labels: Record<Exclude<keyof Values, 'publisher' | 'description'>, string> = { title: 'Book title', author: 'Author', category: 'Category', year: 'Publication year', total: 'Total copies', shelf: 'Shelf location' };
   return <form className="staff-form" noValidate onSubmit={(event) => { void submit(event); }}>
     {message && <p role="alert" className="inline-warning">{message}</p>}
     <small className="field-hint">Fields marked * are required.</small>
     <fieldset className="workflow-fields" disabled={pending}>
-      <div className="form-grid">{(Object.keys(labels) as Array<keyof Values>).map((key) => <Field key={key} label={labels[key] + ' *'}>
+      <div className="form-grid">{(Object.keys(labels) as Array<keyof typeof labels>).map((key) => <Field key={key} label={labels[key] + ' *'}>
         {key === 'category' ? <select name="category" required value={values.category}
           aria-invalid={Boolean(errors.category)} aria-describedby={errors.category ? 'book-error-category' : undefined}
           onChange={(event) => change('category', event.target.value)}
@@ -95,6 +97,18 @@ export function BookForm({ book, pending, onSave, onCancel }: {
           onBlur={() => setErrors((current) => ({ ...current, [key]: validateBookForm(values, checkedOut, Boolean(preview))[key] ?? '' }))}/>}
         {errors[key] && <small className="field-error" id={'book-error-' + key}>{errors[key]}</small>}
       </Field>)}</div>
+      <Field label="Publisher (optional)">
+        <input name="publisher" maxLength={500} value={values.publisher ?? ''}
+          aria-invalid={Boolean(errors.publisher)} aria-describedby={errors.publisher ? 'book-error-publisher' : undefined}
+          onChange={(event) => change('publisher', event.target.value)}/>
+        {errors.publisher && <small className="field-error" id="book-error-publisher">{errors.publisher}</small>}
+      </Field>
+      <Field label="Description (optional)">
+        <textarea name="description" rows={4} maxLength={10000} value={values.description ?? ''}
+          aria-invalid={Boolean(errors.description)} aria-describedby={errors.description ? 'book-error-description' : undefined}
+          onChange={(event) => change('description', event.target.value)}/>
+        {errors.description && <small className="field-error" id="book-error-description">{errors.description}</small>}
+      </Field>
       <Field label="Cover image *">
         <input ref={fileInput} name="image" type="file" required={!book?.hasImage} accept="image/jpeg,image/png,image/webp"
           aria-invalid={Boolean(fileError || errors.image)} aria-describedby="book-image-help book-error-image"

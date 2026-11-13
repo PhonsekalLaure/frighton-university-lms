@@ -1,6 +1,6 @@
 import { asyncHandler } from '../middlewares/asyncHandler.js';
 import { BookService } from '../services/bookService.js';
-import { parseBookBody } from '../validators/bookValidators.js';
+import { parseBookBody, parseCopiesBody } from '../validators/bookValidators.js';
 import { parsePagination, parseUuid } from '../validators/loanValidators.js';
 
 export function createBookController(service = new BookService()) {
@@ -12,6 +12,10 @@ export function createBookController(service = new BookService()) {
     }),
     create: asyncHandler(async (req, res) => { res.status(201).json(await service.create(parseBookBody(req.body), res.locals.librarian?.id)); }),
     update: asyncHandler(async (req, res) => { res.json(await service.update(parseUuid(req.params.id, 'bookId'), parseBookBody(req.body, false), res.locals.librarian?.id)); }),
+    adjustCopies: asyncHandler(async (req, res) => {
+      const { total, expectedTotal } = parseCopiesBody(req.body);
+      res.json(await service.adjustCopies(parseUuid(req.params.id, 'bookId'), total, expectedTotal, res.locals.librarian?.id));
+    }),
     archive: asyncHandler(async (req, res) => { res.json(await service.archive(parseUuid(req.params.id, 'bookId'), res.locals.librarian?.id)); }),
   };
 }

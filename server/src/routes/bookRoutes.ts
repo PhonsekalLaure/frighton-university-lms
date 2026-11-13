@@ -7,6 +7,7 @@ export function createBookRouter(controller = createBookController()) {
   router.get('/:id/image', controller.image);
   router.post('/', controller.create);
   router.put('/:id', controller.update);
+  router.patch('/:id/copies', controller.adjustCopies);
   router.post('/:id/archive', controller.archive);
   return router;
 }

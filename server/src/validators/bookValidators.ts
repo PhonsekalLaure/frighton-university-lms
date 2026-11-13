@@ -34,6 +34,8 @@ export function parseBookBody(value: unknown, requireImage = true): SaveBookInpu
   const author = text('author', 'Author', 500, true);
   const category = text('category', 'Category', 200, true);
   const shelf = text('shelf', 'Shelf location', 200, true);
+  const publisher = input.publisher === undefined ? undefined : text('publisher', 'Publisher', 500);
+  const description = input.description === undefined ? undefined : text('description', 'Description', 10000);
   if (typeof input.total !== 'number' || !Number.isSafeInteger(input.total) || input.total < 0 || input.total > 1000000) fields.total = 'Enter total copies as a whole number from 0 to 1,000,000.';
   const year = input.year;
   if (typeof year !== 'number' || !Number.isInteger(year) || year < 1 || year > 9999) fields.year = 'Enter a publication year as a whole number from 1 to 9999.';
@@ -46,5 +48,23 @@ export function parseBookBody(value: unknown, requireImage = true): SaveBookInpu
   }
   if (Object.keys(fields).length) throw new ValidationError(fields);
   return { title, author, category, shelf, year: year as number, total: input.total as number,
+    ...(publisher !== undefined && { publisher }),
+    ...(description !== undefined && { description }),
     ...(image !== undefined && { image }) };
+}
+
+export function parseCopiesBody(value: unknown): { total: number; expectedTotal: number } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpError(400, 'Enter the new total copies.');
+  }
+  const input = value as Record<string, unknown>;
+  const fields: Record<string, string> = {};
+  for (const key of ['total', 'expectedTotal']) {
+    const count = input[key];
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0 || count > 1000000) {
+      fields[key] = 'Enter total copies as a whole number from 0 to 1,000,000.';
+    }
+  }
+  if (Object.keys(fields).length) throw new ValidationError(fields);
+  return { total: input.total as number, expectedTotal: input.expectedTotal as number };
 }
