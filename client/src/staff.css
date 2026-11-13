@@ -164,3 +164,28 @@ button:disabled {
 .row-actions button.row-key:hover{background:#edf1f6;color:#36465e}
 .form-note{font-size:10px;color:#888792;margin:2px 0 0}
 
+
+/* Dashboard, catalog, student grouping, and fine collection. */
+.dashboard-metrics{grid-template-columns:repeat(5,minmax(0,1fr))}
+.expiring-reservations{list-style:none;padding:0;margin:0;max-height:360px;overflow:auto}
+.expiring-reservations li{display:grid;gap:5px;padding:13px 0;border-bottom:1px solid var(--s-line)}
+.expiring-reservations li:last-child{border-bottom:0}
+.expiring-reservations strong{font-size:12px;color:var(--s-ink)}
+.expiring-reservations span{font-size:11px;color:var(--s-muted)}
+.expiring-reservations small{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--s-teal)}
+.catalog-toolbar,.borrower-toolbar{flex-wrap:wrap}
+.catalog-toolbar .table-search,.borrower-toolbar .table-search{flex:1;min-width:180px}
+.group-students-toggle{display:flex;align-items:center;gap:7px;font-size:11px;white-space:nowrap;color:var(--s-ink)}
+.group-students-toggle input{accent-color:var(--s-teal)}
+.staff-table .student-group-heading th{height:auto;padding:12px 18px;background:var(--s-warm);text-transform:none;letter-spacing:normal;font-size:12px;white-space:normal;color:var(--s-ink)}
+.student-group-heading span{display:block;font-weight:400;font-size:10px;color:var(--s-muted);margin-top:3px}
+.days-remaining{display:block;font-size:10px;margin-top:4px;color:var(--s-teal)}
+.fine-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.fine-summary-grid .borrower-mini-stat{display:grid;gap:5px}
+.fine-summary-grid small{font-size:11px;color:var(--s-muted)}
+.fine-view-total{font-size:11px;color:var(--s-muted)}
+.fine-row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.staff-field textarea{width:100%;padding:10px 12px;border:1px solid #dedbd2;border-radius:5px;background:white;color:var(--s-ink);font:inherit;resize:vertical}
+@media(max-width:1250px){.dashboard-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:850px){.dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.fine-summary-grid{grid-template-columns:1fr;gap:8px}.catalog-toolbar .select-filter{flex:1}.catalog-toolbar .table-search{flex-basis:100%}.group-students-toggle{padding:6px 0}.fine-view-total{font-size:10px}}

@@ -17,5 +17,8 @@ export class BookService {
     }
     return this.repository.save(id, input, actorId);
   }
+  adjustCopies(id: string, total: number, expectedTotal: number, actorId?: string) {
+    return this.repository.adjustCopies(id, total, expectedTotal, actorId);
+  }
   archive(id: string, actorId?: string) { return this.repository.archive(id, actorId); }
 }

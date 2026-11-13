@@ -1,4 +1,4 @@
-export type Values = { title: string; author: string; category: string; year: string; total: string; shelf: string };
+export type Values = { title: string; author: string; category: string; year: string; total: string; shelf: string; publisher?: string; description?: string };
 export type Errors = Record<string, string>;
 export function validateBookForm(values: Values, checkedOut: number, hasImage = false): Errors {
   const errors: Errors = {};
@@ -13,6 +13,8 @@ export function validateBookForm(values: Values, checkedOut: number, hasImage = 
   else if (Number(values.total) < checkedOut) errors.total = 'At least ' + checkedOut + ' copies are currently checked out. Total copies cannot be lower.';
   if (!/^[0-9]+$/.test(values.year) || Number(values.year) < 1 || Number(values.year) > 9999) errors.year = 'Enter a publication year as a whole number from 1 to 9999.';
   if (!values.category.trim()) errors.category = 'Select a category.';
+  if ((values.publisher?.trim().length ?? 0) > 500) errors.publisher = 'Publisher must be 500 characters or fewer.';
+  if ((values.description?.trim().length ?? 0) > 10000) errors.description = 'Description must be 10000 characters or fewer.';
   if (!hasImage) errors.image = 'Upload a cover image for this book.';
   return errors;
 }
