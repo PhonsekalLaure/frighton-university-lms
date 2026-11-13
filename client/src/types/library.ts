@@ -1,9 +1,9 @@
-export type Page = 'dashboard' | 'books' | 'circulation' | 'borrowed' | 'reservations' | 'librarians' | 'audit';
+export type Page = 'dashboard' | 'books' | 'circulation' | 'borrowed' | 'reservations' | 'librarians' | 'audit' | 'fines';
 export type StaffRole = 'Librarian' | 'Admin';
-export type BookRecord = { hasImage?: boolean; id: string; title: string; author: string; category: string; year: number | null; available: number; total: number; shelf: string; active: boolean };
+export type BookRecord = { hasImage?: boolean; id: string; title: string; author: string; category: string; publisher?: string | null; description?: string | null; year: number | null; available: number; total: number; shelf: string; active: boolean };
 export type Loan = {
   id: string; studentId: string; student: string; bookId: string; bookTitle: string; bookAuthor: string;
-  borrowed: string; due: string; returned?: string; finePaid?: number; receipt?: string;
+  borrowed: string; due: string; returned?: string; finePaid?: number; finePaidAt?: string; receipt?: string;
   dailyPenaltyRate: number; overdueDays: number; fineAmount: number;
 };
 export type Reservation = { id: string; studentId: string; student: string; bookId: string; reserved: string; expires: string; status: 'Active' | 'Fulfilled' | 'Cancelled' | 'Expired' };

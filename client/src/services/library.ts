@@ -15,7 +15,7 @@ export function toLoan(record: LoanResponse): Loan {
     student: record.studentName ?? '', bookId: record.bookId ?? '',
     bookTitle: record.bookTitle ?? '', bookAuthor: record.bookAuthor ?? '',
     borrowed: record.borrowedAt, due: record.dueDate, returned: record.returnedAt ?? undefined,
-    finePaid: record.returnedAt ? record.fineAmount : undefined, receipt: record.receiptNumber ?? undefined,
+    finePaid: record.finePaidAt ? record.fineAmount : undefined, finePaidAt: record.finePaidAt ?? undefined, receipt: record.receiptNumber ?? undefined,
     dailyPenaltyRate: record.dailyPenaltyRate, overdueDays: record.overdueDays, fineAmount: record.fineAmount,
   };
 }
@@ -27,11 +27,15 @@ export async function getLoans(signal?: AbortSignal): Promise<Loan[]> {
 export const getPolicy = (signal?: AbortSignal) => apiRequest<CirculationPolicy>('/v1/loans/policy', { signal });
 export const verifyPatron = (id: string, signal?: AbortSignal) =>
   apiRequest<Patron>('/v1/loans/verify-patron/' + encodeURIComponent(id.trim().toUpperCase()), { signal });
-export type BookInput = Pick<BookRecord, 'title' | 'author' | 'category' | 'total' | 'shelf'> & { year: number; image?: string };
+export type BookInput = Pick<BookRecord, 'title' | 'author' | 'category' | 'total' | 'shelf'> & { year: number; image?: string; publisher?: string; description?: string };
 export const saveBook = (id: string | null, book: BookInput) => apiRequest<BookRecord>(
   id ? '/v1/books/' + encodeURIComponent(id) : '/v1/books',
   { method: id ? 'PUT' : 'POST', body: JSON.stringify(book) },
 );
+export const adjustBookCopies = (id: string, total: number, expectedTotal: number) =>
+  apiRequest<BookRecord>('/v1/books/' + encodeURIComponent(id) + '/copies', {
+    method: 'PATCH', body: JSON.stringify({ total, expectedTotal }),
+  });
 export const archiveBook = (id: string) =>
   apiRequest<BookRecord>('/v1/books/' + encodeURIComponent(id) + '/archive', { method: 'POST', body: '{}' });
 export async function borrowBook(studentNumber: string, bookId: string): Promise<{ loan: LoanResponse }> {
