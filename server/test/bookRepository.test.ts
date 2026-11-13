@@ -11,7 +11,7 @@ const bookId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const originalPath = bookId + '/original.png';
 const input = { title: 'Dracula', author: 'Bram Stoker', category: 'Literature', year: 1897, total: 4, shelf: 'A-1' };
 const image = { data: Buffer.from('new-image').toString('base64'), contentType: 'image/jpeg' };
-type Row = { books_id: string; title: string; author: string; category: string; publication_year: number; copies: number; shelf_location: string; is_active: boolean; cover_image_path: string | null };
+type Row = { books_id: string; title: string; author: string; category: string; publication_year: number; copies: number; shelf_location: string; publisher?: string; description?: string; is_active: boolean; cover_image_path: string | null };
 async function withStore(run: (state: ReturnType<typeof stateFor>, repository: ReturnType<typeof createBookRepository>) => Promise<void>) {
   const state = stateFor();
   const upstream = createServer(async (req, res) => {
@@ -45,14 +45,14 @@ async function withStore(run: (state: ReturnType<typeof stateFor>, repository: R
     const filtered = [...state.rows.values()].filter(row => !filter || filter === 'eq.' + row.books_id
       || (filter.startsWith('in.(') && filter.slice(4, -1).split(',').includes(row.books_id)));
     const toCatalog = (row: Row) => ({ id: row.books_id, title: row.title, author: row.author, category: row.category,
-      year: row.publication_year, available: row.copies, total: row.copies + (row.books_id === bookId ? 1 : 0), shelf: row.shelf_location, active: row.is_active });
+      year: row.publication_year, available: row.copies - state.reservedCopies, physical_available: row.copies, total: row.copies + (row.books_id === bookId ? 1 : 0), shelf: row.shelf_location, publisher: row.publisher, description: row.description, active: row.is_active });
     if (url.pathname === '/rest/v1/catalog_books') {
       if (state.catalogReadFailsAfterSave && state.requests.some(r=>r.method==='PATCH')) { res.statusCode=400;res.end(JSON.stringify({message:'Refresh unavailable'}));return; }
       const rows = [...state.rows.values()].filter(row => !url.searchParams.has('id') || url.searchParams.get('id') === 'eq.' + row.books_id).map(toCatalog);
       res.setHeader('Content-Range', '0-' + Math.max(0, rows.length - 1) + '/' + rows.length); res.end(JSON.stringify(rows)); return;
     }
     if (url.pathname === '/rest/v1/books' && req.method === 'GET') {
-      res.end(JSON.stringify(filtered.map(row => ({ books_id: row.books_id, cover_image_path: row.cover_image_path })))); return;
+      res.end(JSON.stringify(filtered.map(row => ({ books_id: row.books_id, cover_image_path: row.cover_image_path, publisher: row.publisher, description: row.description })))); return;
     }
     if (url.pathname === '/rest/v1/books' && (req.method === 'POST' || req.method === 'PATCH')) {
       if (state.saveFailed) { res.statusCode = 400; res.end(JSON.stringify({ code: '23514', message: 'simulated database failure' })); return; }
@@ -62,7 +62,7 @@ async function withStore(run: (state: ReturnType<typeof stateFor>, repository: R
       const row = { ...current, ...body } as Row;
       state.rows.set(row.books_id, row);
       if(state.commitResponseLost){res.statusCode=500;res.end(JSON.stringify({code:'08007',message:'Commit outcome unknown'}));return;}
-      const result = { ...toCatalog(row), cover_image_path: row.cover_image_path };
+      const result = { ...toCatalog(row), available: row.copies, cover_image_path: row.cover_image_path };
       res.end(JSON.stringify(req.method === 'POST' ? result : [result])); return;
     }
     res.statusCode = 404; res.end('{}');
@@ -77,6 +77,7 @@ function stateFor() {
     rows: new Map<string, Row>([[bookId, { books_id: bookId, title: 'Dracula', author: 'Bram Stoker', category: 'Literature', publication_year: 1897, copies: 1, shelf_location: 'A-1', is_active: true, cover_image_path: originalPath }]]),
     files: new Map([[originalPath, { bytes: Buffer.from('image-bytes'), type: 'image/png' }]]),
     requests: [] as Array<{ method: string; path: string; body: Record<string, unknown>; bytes: Buffer; contentType: string | undefined; actor?: string | string[] }>,
+    reservedCopies: 0,
     saveFailed: false, stockConflict: false, coverConflict: false, bucketMissing: false, cleanupFailed: false, catalogReadFailsAfterSave:false,commitResponseLost:false,
   };
 }
@@ -199,5 +200,46 @@ test('catalog writes attribute actions to the authenticated staff member', async
     const archived = state.requests.filter(request => request.method === 'PATCH' && request.path.startsWith('/rest/v1/books')).at(-1)!;
     assert.equal(archived.actor, actor);
     assert.equal('audit_request_id' in archived.body, false);
+  });
+});
+
+test("catalog metadata persists and survives edits that omit it", async () => {
+  await withStore(async (state, repository) => {
+    await repository.save(bookId, { ...input, publisher: "Penguin", description: "A classic." });
+    assert.equal(state.rows.get(bookId)?.publisher, "Penguin");
+    const listed = await repository.list({ page: 1, pageSize: 10 });
+    assert.equal(listed.data[0].publisher, "Penguin");
+    assert.equal(listed.data[0].description, "A classic.");
+    await repository.save(bookId, input);
+    assert.equal(state.rows.get(bookId)?.description, "A classic.");
+  });
+});
+
+test("copy edits preserve metadata, reject stale counts, and protect allocated copies", async () => {
+  await withStore(async (state, repository) => {
+    const saved = await repository.adjustCopies(bookId, 5, 2, "staff-id");
+    assert.equal(saved.total, 5);
+    assert.equal(state.rows.get(bookId)?.copies, 4);
+    assert.equal(state.rows.get(bookId)?.title, "Dracula");
+    assert.equal(state.rows.get(bookId)?.cover_image_path, originalPath);
+    const update = state.requests.find(request => request.method === "PATCH")!;
+    assert.deepEqual(update.body, { copies: 4 });
+    assert.equal(update.actor, "staff-id");
+    await assert.rejects(repository.adjustCopies(bookId, 6, 2), { status: 409 });
+    await assert.rejects(repository.adjustCopies(bookId, 0, 5), ValidationError);
+    state.stockConflict = true;
+    await assert.rejects(repository.adjustCopies(bookId, 6, 5), { status: 409 });
+  });
+});
+
+test("copy reductions account for both checked-out books and reserved stock", async () => {
+  await withStore(async (state, repository) => {
+    state.rows.get(bookId)!.copies = 3;
+    state.reservedCopies = 2;
+    await assert.rejects(repository.adjustCopies(bookId, 2, 4), ValidationError);
+    const result = await repository.adjustCopies(bookId, 3, 4);
+    assert.equal(state.rows.get(bookId)?.copies, 2);
+    assert.equal(result.total, 3);
+    assert.equal(result.available, 0);
   });
 });

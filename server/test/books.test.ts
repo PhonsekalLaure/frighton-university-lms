@@ -8,7 +8,7 @@ import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { createBookRouter } from '../src/routes/bookRoutes.js';
 import { BookService } from '../src/services/bookService.js';
 import { crc32 } from 'node:zlib';
-import { MAX_COVER_BYTES, parseBookBody, parseBookImage } from '../src/validators/bookValidators.js';
+import { MAX_COVER_BYTES, parseBookBody, parseBookImage, parseCopiesBody } from '../src/validators/bookValidators.js';
 import { HttpError, ValidationError } from '../src/utils/httpError.js';
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jHfkAAAAASUVORK5CYII=';
@@ -25,9 +25,16 @@ test('book validation rejects malformed input and fractional or negative copy co
 test('catalog endpoints persist add/edit/archive and return empty database results without mock books', async () => {
   let empty = false;
   let hasImage = true;
+  let adjustments = 0;
   const app = express();
   app.use(express.json());
   app.use('/books', createBookRouter(createBookController(new BookService({
+    adjustCopies: async (id, total, expectedTotal) => {
+      assert.equal(id, book.id);
+      assert.equal(expectedTotal, 2);
+      adjustments++;
+      return { ...book, id, total };
+    },
     hasImage: async () => hasImage,
     image: async () => ({ bytes: Buffer.from('test-image'), contentType: 'image/png' }),
     list: async ({ page, pageSize }) => ({ data: empty ? [] : [book], total: empty ? 0 : 1, page, pageSize }),
@@ -68,6 +75,18 @@ test('catalog endpoints persist add/edit/archive and return empty database resul
     assert.equal((await archive.json()).active, false);
     empty = true;
     assert.deepEqual((await (await fetch(base)).json()).data, []);
+    const adjusted = await fetch(base + '/' + book.id + '/copies', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ total: 5, expectedTotal: 2 }),
+    });
+    assert.equal(adjusted.status, 200);
+    assert.equal((await adjusted.json()).total, 5);
+    const invalidCopies = await fetch(base + '/' + book.id + '/copies', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ total: 1.5, expectedTotal: 2 }),
+    });
+    assert.equal(invalidCopies.status, 400);
+    assert.equal(adjustments, 1);
     const invalid = await fetch(base + '/1/archive', { method: 'POST' });
     assert.equal(invalid.status, 400);
   } finally {
@@ -120,4 +139,22 @@ test('Express validation requires publication year, category and shelf location 
     }
   }
   assert.deepEqual(parseBookBody({ ...input, category: '  Literature  ', shelf: '  A-1  ' }, false), input);
+});
+
+test("optional catalog details are trimmed and bounded", () => {
+  const parsed = parseBookBody({ ...input, publisher: "  Penguin  ", description: "  A classic.  " }, false);
+  assert.equal(parsed.publisher, "Penguin");
+  assert.equal(parsed.description, "A classic.");
+  assert.equal("publisher" in parseBookBody(input, false), false);
+  for (const fields of [{ publisher: "x".repeat(501) }, { description: "x".repeat(10001) }, { publisher: 7 }]) {
+    assert.throws(() => parseBookBody({ ...input, ...fields }, false), ValidationError);
+  }
+});
+
+test("copy adjustments validate requested and previous counts", () => {
+  assert.deepEqual(parseCopiesBody({ total: 0, expectedTotal: 2 }), { total: 0, expectedTotal: 2 });
+  for (const value of [null, [], {}, { total: -1, expectedTotal: 2 }, { total: 1.5, expectedTotal: 2 },
+    { total: 1000001, expectedTotal: 2 }, { total: "3", expectedTotal: 2 }, { total: 3, expectedTotal: -1 }]) {
+    assert.throws(() => parseCopiesBody(value), HttpError);
+  }
 });
