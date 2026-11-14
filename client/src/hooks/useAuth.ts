@@ -65,5 +65,7 @@ export function useAuth() {
     setSessionError('');
   };
 
-  return { librarian, checking, sessionError, login, logout };
+  const updateLibrarian = (profile: Librarian) => setLibrarian(profile);
+
+  return { librarian, checking, sessionError, login, logout, updateLibrarian };
 }

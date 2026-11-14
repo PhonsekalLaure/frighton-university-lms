@@ -1,4 +1,4 @@
-export type Page = 'dashboard' | 'books' | 'circulation' | 'borrowed' | 'reservations' | 'librarians' | 'audit' | 'fines';
+export type Page = 'dashboard' | 'books' | 'circulation' | 'borrowed' | 'reservations' | 'librarians' | 'audit' | 'fines' | 'profile';
 export type StaffRole = 'Librarian' | 'Admin';
 export type BookRecord = { hasImage?: boolean; id: string; title: string; author: string; category: string; publisher?: string | null; description?: string | null; year: number | null; available: number; total: number; shelf: string; active: boolean };
 export type Loan = {

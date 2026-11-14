@@ -47,6 +47,82 @@ authRouter.get('/me', requireLibrarian, (_req, res) => {
   res.json({ librarian: res.locals.librarian });
 });
 
+authRouter.patch('/profile', requireLibrarian, async (req, res, next) => {
+  try {
+    const { firstName, middleName, lastName } = req.body ?? {};
+    if (typeof firstName !== 'string' || !firstName.trim() || firstName.trim().length > 100) {
+      throw new AuthError(400, 'Enter a first name up to 100 characters.');
+    }
+    if (middleName !== undefined && middleName !== null && typeof middleName !== 'string') {
+      throw new AuthError(400, 'Middle name must be text.');
+    }
+    if (typeof middleName === 'string' && middleName.trim().length > 100) {
+      throw new AuthError(400, 'Middle name must be 100 characters or fewer.');
+    }
+    if (typeof lastName !== 'string' || !lastName.trim() || lastName.trim().length > 100) {
+      throw new AuthError(400, 'Enter a last name up to 100 characters.');
+    }
+
+    const first = firstName.trim();
+    const middle = typeof middleName === 'string' ? middleName.trim() || null : null;
+    const last = lastName.trim();
+    const { data: profile, error } = await getSupabaseAdmin()
+      .from('users')
+      .update({ first_name: first, middle_name: middle, last_name: last, updated_at: new Date().toISOString() })
+      .eq('users_id', res.locals.librarian.id)
+      .select('first_name,middle_name,last_name')
+      .single();
+    if (error || !profile) {
+      throw new AuthError(503, 'Your profile could not be saved. Please try again.');
+    }
+
+    res.json({ librarian: {
+      ...res.locals.librarian,
+      firstName: profile.first_name,
+      middleName: profile.middle_name,
+      lastName: profile.last_name,
+      fullName: [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' '),
+    } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.post('/change-password', requireLibrarian, createAuthRateLimit(5, 15 * 60 * 1000), async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (typeof currentPassword !== 'string' || !currentPassword || currentPassword.length > 1024) {
+      throw new AuthError(400, 'Enter your current password.');
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 1024) {
+      throw new AuthError(400, 'The new password must be between 8 and 1024 characters.');
+    }
+
+    const client = createSupabaseAuthClient();
+    const { data, error } = await client.auth.signInWithPassword({
+      email: res.locals.librarian.email,
+      password: currentPassword,
+    });
+    if (error || !data.session || !data.user) {
+      if (error && (!error.status || error.status >= 500)) {
+        throw new AuthError(503, 'Password service is temporarily unavailable. Please try again.');
+      }
+      throw new AuthError(400, 'Your current password is incorrect.');
+    }
+
+    const { error: updateError } = await getSupabaseAdmin().auth.admin.updateUserById(data.user.id, { password: newPassword });
+    if (updateError) {
+      if (!updateError.status || updateError.status >= 500) {
+        throw new AuthError(503, 'Password service is temporarily unavailable. Please try again.');
+      }
+      throw new AuthError(400, 'The new password could not be saved. Check it and try again.');
+    }
+    res.sendStatus(204);
+  } catch (error) {
+    next(error);
+  }
+});
+
 authRouter.post('/refresh', createAuthRateLimit(60, 15 * 60 * 1000), async (req, res, next) => {
   try {
     const refreshToken = readCookie(req, 'lms_refresh');

@@ -4,6 +4,9 @@ export { ApiError } from './api';
 export interface Librarian {
   id: string;
   email: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
   fullName: string;
   role: 'librarian' | 'admin';
 }
@@ -30,4 +33,18 @@ export async function getSession(): Promise<Librarian> {
 }
 export async function signOut(): Promise<void> {
   await apiRequest<void>('/auth/logout', { method: 'POST', body: '{}' });
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await apiRequest<void>('/auth/change-password', {
+    method: 'POST', body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export async function updateMyProfile(firstName: string, middleName: string, lastName: string): Promise<Librarian> {
+  const data = await apiRequest<{ librarian: Librarian }>('/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ firstName, middleName: middleName || null, lastName }),
+  });
+  return data.librarian;
 }

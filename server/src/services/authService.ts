@@ -4,6 +4,9 @@ import { getSupabaseAdmin } from '../config/supabase.js';
 export interface Librarian {
   id: string;
   email: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
   fullName: string;
   role: 'librarian' | 'admin';
 }
@@ -45,6 +48,9 @@ export async function findLibrarian(user: User): Promise<Librarian> {
   return {
     id: profile.users_id,
     email: profile.email,
+    firstName: profile.first_name,
+    middleName: profile.middle_name,
+    lastName: profile.last_name,
     fullName: [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' '),
     role: staffRole,
   };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowLeftRight, ArrowRight, BookmarkCheck, CheckCircle2, ChevronDown, ClipboardList, Clock3, Coins, FileText, LayoutDashboard, Library, LogOut, Menu, Search, UserCog, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, ArrowRight, BookmarkCheck, CheckCircle2, ChevronDown, ClipboardList, Clock3, Coins, FileText, LayoutDashboard, Library, Menu, Search, UserCog, Users, X } from 'lucide-react';
 import type { BookRecord, Loan, Page, Reservation, Staff } from './types/library';
 import { formatDate, getInitials, money } from './utils/library';
 import { useAuth } from './hooks/useAuth';
@@ -25,6 +25,7 @@ import { Field, FormActions, Modal } from './components/staff/StaffUI';
 import { RemoteState } from './components/staff/RemoteState';
 import { ReservationStudentSearch } from './components/staff/ReservationStudentSearch';
 import { ReplacementCharges } from './components/staff/ReplacementCharges';
+import { ProfilePage } from './features/library/ProfilePage';
 import './App.css';
 import './staff.css';
 
@@ -41,6 +42,7 @@ const pagePaths: Record<Page, string> = {
   librarians: '/librarians',
   audit: '/audit-trail',
   fines: '/fines',
+  profile: '/profile',
 };
 const pageFromPath = (pathname: string): Page | undefined => {
   const normalizedPath = pathname.replace(/\/+$/, '') || '/';
@@ -48,7 +50,7 @@ const pageFromPath = (pathname: string): Page | undefined => {
   return (Object.keys(pagePaths) as Page[]).find((candidate) => pagePaths[candidate] === normalizedPath);
 };
 export default function App() {
-  const { librarian, checking, sessionError, login, logout } = useAuth();
+  const { librarian, checking, sessionError, login, logout, updateLibrarian } = useAuth();
   const role = librarian?.role === 'admin' ? 'Admin' : 'Librarian';
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname) ?? 'dashboard');
   const librarySessionId = librarian?.id;
@@ -300,7 +302,7 @@ export default function App() {
   const globalStudent = lookup.trim().toUpperCase();
   const lookupStudent = quickPatron.patron;
   const staffName = librarian.fullName || librarian.email;
-  const pageRecords = page === 'audit' ? [] : page === 'librarians' ? [staffRecords]
+  const pageRecords = page === 'audit' || page === 'profile' ? [] : page === 'librarians' ? [staffRecords]
     : page === 'books' ? [catalogRecords]
     : page === 'reservations' ? [reservationRecords, catalogRecords]
     : page === 'fines' ? [loanRecords]
@@ -320,7 +322,6 @@ export default function App() {
       </nav>
       <div className="sidebar-spacer"/>
       <div className="staff-sidebar-note"><span className="online-dot"/><span><strong>Desk is open</strong><small>Authenticated staff session</small></span><Clock3 size={15}/></div>
-      <div className="staff-profile"><span className="staff-avatar">{getInitials(staffName)}</span><span><strong>{staffName}</strong><small>{role}</small></span></div>
     </aside>
     {mobileNav && <button className="staff-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)}/>}
     <main className="staff-main">
@@ -330,14 +331,14 @@ export default function App() {
         <div className="staff-top-actions">
           <label className="quick-lookup"><Search size={16}/><input aria-label="Quick student ID lookup" placeholder="Look up student ID" value={lookup} onChange={(event) => setLookup(event.target.value)}/><kbd>Ctrl + K</kbd></label>
           {lookup && <div className="lookup-popover">{lookupStudent ? <><span className="staff-avatar small-avatar">{getInitials(lookupStudent.name)}</span><div><strong>{lookupStudent.name}</strong><small>{globalStudent}</small></div><button onClick={() => { setBorrowId(globalStudent); setCirculationTab('borrow'); go('circulation'); setLookup(''); }}>Start checkout <ArrowRight size={14}/></button></> : <span className="lookup-not-found">{quickPatron.loading ? 'Looking up student...' : quickPatron.error || 'Enter a student ID'}</span>}</div>}
-          <span className="topbar-divider"/><button className="top-staff"><span className="staff-avatar small-avatar">{getInitials(staffName)}</span><span><strong>{staffName}</strong><small>{role}</small></span><ChevronDown size={14}/></button>
-          <button className="top-signout" disabled={pending} onClick={() => { void logout().catch((error: unknown) => setOperationError(error instanceof Error ? error.message : 'Unable to sign out.')); }} aria-label="Sign out"><LogOut size={17}/></button>
+          <span className="topbar-divider"/><button className="top-staff" type="button" onClick={() => go('profile')} aria-label="Open profile"><span className="staff-avatar small-avatar">{getInitials(staffName)}</span><span><strong>{staffName}</strong><small>{role}</small></span><ChevronDown size={14}/></button>
         </div>
       </header>
       <div className="staff-content" key={page} aria-busy={pending || loading} inert={pending}>
         {operationError && !(page === 'circulation' && circulationTab === 'borrow') && <div className="inline-warning" role="alert"><AlertTriangle size={17}/>{operationError}</div>}
         {!ready ? <RemoteState loading={loading} error={dataError} onRetry={retry}/> : <>
         {dataError && <div className="inline-warning" role="alert"><AlertTriangle size={17}/><span>Records could not be refreshed: {dataError}</span><button type="button" className="staff-text-link" onClick={retry}>Try again</button></div>}
+        {page === 'profile' && <ProfilePage librarian={librarian} pending={pending} onLogout={() => { void logout().catch((error: unknown) => setOperationError(error instanceof Error ? error.message : 'Unable to sign out.')); }} onProfileUpdated={updateLibrarian} />}
         {page === 'dashboard' && <DashboardPage books={books} loans={loans} onBorrowers={openBorrowers} onAddBook={() => startBookForm()} onNewReservation={() => { setReservationForm({ studentId: '', bookId: '' }); setModal('reservation'); }} activeLoans={activeLoans} overdueLoans={overdueLoans} reservations={activeReservations} bookById={bookById} onNavigate={go} onCirculation={(tab) => { setCirculationTab(tab); go('circulation'); }} />}
         {page === 'books' && <BooksPage books={books} query={catalogQuery} setQuery={setCatalogQuery} filter={bookStatusFilter} setFilter={setBookStatusFilter} onAdd={() => startBookForm()} onEdit={startBookForm} onAdjustCopies={(book) => { setEditingBook(book); setOperationError(''); setModal('copies'); }} onBorrow={(bookId) => { setBorrowBookId(bookId); setCirculationTab('borrow'); go('circulation'); }} onArchive={requestArchive} onReserve={(bookId) => { setReservationForm({ studentId: '', bookId }); setModal('reservation'); }} />}
         {page === 'circulation' && policy && <CirculationPage reservedBookIds={activeReservations.filter(r=>r.studentId===borrowId.trim().toUpperCase()).map(r=>r.bookId)} tab={circulationTab} setTab={setCirculationTab} books={books} activeLoans={activeLoans} loans={loans} policy={policy} borrowId={borrowId} setBorrowId={setBorrowId} borrowBookId={borrowBookId} setBorrowBookId={setBorrowBookId} returnLoanId={returnLoanId} setReturnLoanId={setReturnLoanId} patron={borrowPatron.patron} patronLoading={borrowPatron.loading} patronError={borrowPatron.error} checkoutError={operationError} returnQuote={returnQuote} quoteLoading={returnDetails.loading} quoteError={returnDetails.error} pending={pending} bookById={bookById} onBorrow={processBorrow} onReturn={processReturn} onReserve={() => { setReservationForm({ studentId: '', bookId: borrowBookId }); setModal('reservation'); }} />}
