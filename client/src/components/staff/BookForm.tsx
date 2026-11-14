@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
+import { BookOpen, Image as ImageIcon, Upload, X } from 'lucide-react';
 import type { BookRecord } from '../../types/library';
 import type { BookInput } from '../../services/library';
 import { ApiError, apiBase } from '../../services/api';
@@ -14,6 +15,7 @@ export function BookForm({ book, pending, onSave, onCancel }: {
     publisher: book?.publisher ?? '', description: book?.description ?? '',
     category: book?.category ?? '', year: book?.year?.toString() ?? '', total: String(book?.total ?? 1), shelf: book?.shelf ?? '' }));
   const [image, setImage] = useState<string | undefined>();
+  const [imageName, setImageName] = useState('');
   const [errors, setErrors] = useState<Errors>({});
   const [message, setMessage] = useState('');
   const [reading, setReading] = useState(false);
@@ -43,13 +45,16 @@ export function BookForm({ book, pending, onSave, onCancel }: {
       });
       const decoded = new Image(); decoded.src = result;
       await decoded.decode().catch(() => { throw new Error('This image could not be opened. Choose another JPEG, PNG, or WebP file.'); });
-      if (version === readVersion.current) setImage(result);
+      if (version === readVersion.current) {
+        setImage(result);
+        setImageName(file.name);
+      }
     } catch (error) {
       if (version === readVersion.current) setFileError(error instanceof Error ? error.message : 'Choose another image.');
     } finally { if (version === readVersion.current) setReading(false); }
   }
   function resetImage() {
-    ++readVersion.current; setReading(false); setImage(undefined); setFileError('');
+    ++readVersion.current; setReading(false); setImage(undefined); setImageName(''); setFileError('');
     setErrors((current) => ({ ...current, image: '' })); setMessage('');
     if (fileInput.current) fileInput.current.value = '';
   }
@@ -110,15 +115,41 @@ export function BookForm({ book, pending, onSave, onCancel }: {
         {errors.description && <small className="field-error" id="book-error-description">{errors.description}</small>}
       </Field>
       <Field label="Cover image *">
-        <input ref={fileInput} name="image" type="file" required={!book?.hasImage} accept="image/jpeg,image/png,image/webp"
-          aria-invalid={Boolean(fileError || errors.image)} aria-describedby="book-image-help book-error-image"
-          onClick={(event) => { event.currentTarget.value = ''; }} onChange={(event) => { void chooseImage(event.target.files?.[0]); }}/>
+        <div className="cover-file-picker">
+          <span className="cover-file-icon"><ImageIcon size={18}/></span>
+          <span className="cover-file-copy">
+            <strong>{imageName || (book?.hasImage ? 'Current cover image' : 'No cover selected')}</strong>
+            <small>{imageName ? 'Ready to preview' : 'JPEG, PNG, or WebP · up to 10 MB'}</small>
+          </span>
+          <button type="button" className="cover-file-button" aria-controls="book-cover-image" onClick={() => fileInput.current?.click()}>
+            <Upload size={15}/> Choose file
+          </button>
+          <input ref={fileInput} id="book-cover-image" className="cover-file-input" name="image" type="file" tabIndex={-1} aria-hidden="true" required={!book?.hasImage} accept="image/jpeg,image/png,image/webp"
+            aria-invalid={Boolean(fileError || errors.image)} aria-describedby="book-image-help book-error-image"
+            onClick={(event) => { event.currentTarget.value = ''; }} onChange={(event) => { void chooseImage(event.target.files?.[0]); }}/>
+        </div>
         <small id="book-image-help" className="field-hint">A cover image is required. JPEG, PNG, or WebP, up to 10 MB. Choose a new file to replace the current image.</small>
         <small className="field-error" id="book-error-image" role={fileError || errors.image ? 'alert' : undefined}>{fileError || errors.image}</small>
       </Field>
       {reading && <p role="status">Checking image...</p>}
-      {preview && <div className="book-image-preview"><img src={preview} alt="Book cover preview"/></div>}
-      {(image !== undefined || fileError) && <button type="button" className="staff-outline" onClick={resetImage}>{book?.hasImage ? 'Keep current image' : 'Clear image selection'}</button>}
+      {(preview || image !== undefined || fileError) && <section className="book-cover-showcase" aria-label="Book cover preview">
+        <div className="book-preview-main">
+          <span className="book-preview-cover">
+            {preview ? <img src={preview} alt="Book cover preview"/> : <BookOpen size={17}/>}
+          </span>
+          <span className="book-preview-title">
+            <strong>{values.title.trim() || 'Untitled book'}</strong>
+            <small>{values.author.trim() || 'Author name'}</small>
+          </span>
+          {(image !== undefined || fileError) && <button type="button" className="staff-outline book-cover-reset" onClick={resetImage} title={book?.hasImage ? 'Keep current image' : 'Clear image selection'} aria-label={book?.hasImage ? 'Keep current image' : 'Clear image selection'}><X size={15}/></button>}
+        </div>
+        <div className="book-preview-details">
+          <span className="book-preview-meta"><small>Category</small><strong>{values.category || '-'}</strong></span>
+          <span className="book-preview-meta"><small>Publisher</small><strong>{values.publisher?.trim() || '-'}</strong></span>
+          <span className="book-preview-meta"><small>Year</small><strong>{values.year || '-'}</strong></span>
+          <span className="book-preview-meta"><small>Available</small><strong>{Math.max((Number(values.total) || 0) - checkedOut, 0)} / {Number(values.total) || 0}</strong></span>
+        </div>
+      </section>}
       <FormActions onCancel={onCancel} pending={pending || reading} submit={book ? 'Save changes' : 'Add to catalog'}/>
     </fieldset>
   </form>;
