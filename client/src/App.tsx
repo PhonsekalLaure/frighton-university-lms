@@ -32,16 +32,6 @@ type ConfirmationRequest = { title: string; message: string; confirmLabel: strin
 const loadReservations = (signal: AbortSignal) => getReservations('all', signal);
 const loadStaff = (signal: AbortSignal) => getAllPages<Staff>('/v1/staff', signal);
 
-const pageLabels: Record<Page, string> = {
-  dashboard: 'Dashboard',
-  books: 'Book catalog',
-  circulation: 'Circulation desk',
-  borrowed: 'Active borrowers',
-  reservations: 'Reservations',
-  librarians: 'Librarian management',
-  audit: 'Audit trail',
-  fines: 'Student fines',
-};
 const pagePaths: Record<Page, string> = {
   dashboard: '/dashboard',
   books: '/books',
@@ -336,7 +326,7 @@ export default function App() {
     <main className="staff-main">
       <header className="staff-topbar">
         <button className="staff-menu-button" onClick={() => setMobileNav((open) => !open)} aria-label="Toggle navigation">{mobileNav ? <X size={20}/> : <Menu size={20}/>}</button>
-        <div className="staff-breadcrumb"><span>Frighton Library</span><b>/</b><strong>{pageLabels[page]}</strong></div>
+        <span className="staff-date-label">{new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'long', month: 'long', day: '2-digit', year: 'numeric' }).toUpperCase()}</span>
         <div className="staff-top-actions">
           <label className="quick-lookup"><Search size={16}/><input aria-label="Quick student ID lookup" placeholder="Look up student ID" value={lookup} onChange={(event) => setLookup(event.target.value)}/><kbd>Ctrl + K</kbd></label>
           {lookup && <div className="lookup-popover">{lookupStudent ? <><span className="staff-avatar small-avatar">{getInitials(lookupStudent.name)}</span><div><strong>{lookupStudent.name}</strong><small>{globalStudent}</small></div><button onClick={() => { setBorrowId(globalStudent); setCirculationTab('borrow'); go('circulation'); setLookup(''); }}>Start checkout <ArrowRight size={14}/></button></> : <span className="lookup-not-found">{quickPatron.loading ? 'Looking up student...' : quickPatron.error || 'Enter a student ID'}</span>}</div>}

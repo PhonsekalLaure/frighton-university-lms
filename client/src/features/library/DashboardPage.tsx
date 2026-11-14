@@ -29,9 +29,7 @@ export function DashboardPage({ books, loans, activeLoans, overdueLoans, reserva
   const collected = finesCollectedToday(loans);
 
   return <>
-    <PageHeading eyebrow={new Date().toLocaleDateString('en-PH', {
-      timeZone: 'Asia/Manila', weekday: 'long', month: 'long', day: '2-digit', year: 'numeric',
-    }).toUpperCase()} title="Good morning, library team">
+    <PageHeading title="Good morning, library team">
       <button className="staff-outline" onClick={() => onBorrowers('All active')}><FileText size={16}/> View activity</button>
     </PageHeading>
     {overdueLoans.length > 0 && <button className="overdue-banner" onClick={() => onBorrowers('Overdue')}>
