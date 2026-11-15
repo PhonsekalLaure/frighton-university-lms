@@ -9,7 +9,9 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "db:seed": "tsx src/scripts/demoSeed.ts seed",
+    "db:unseed": "tsx src/scripts/demoSeed.ts unseed"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
