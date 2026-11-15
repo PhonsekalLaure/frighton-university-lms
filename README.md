@@ -23,3 +23,7 @@ npm install
 # Start both client and server concurrently
 npm run dev
 ```
+
+## Demo data
+
+Run `npm run db:seed` to create one confirmed admin, two confirmed librarians, and 10 books with cover images. Run `npm run db:unseed` to remove only tracked seed data. Apply migrations 012 and 013 first. See [setup, credentials, and cleanup behavior](docs/demo-seeding.md).

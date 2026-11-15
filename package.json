@@ -13,7 +13,9 @@
     "build": "npm run build -w client && npm run build -w server",
     "build:client": "npm run build -w client",
     "build:server": "npm run build -w server",
-    "test:auth": "npm run test -w server"
+    "test:auth": "npm run test -w server",
+    "db:seed": "npm run db:seed -w server",
+    "db:unseed": "npm run db:unseed -w server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
